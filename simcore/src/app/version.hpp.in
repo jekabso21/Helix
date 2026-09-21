@@ -1,0 +1,5 @@
+#pragma once
+
+namespace fpvsim {
+inline constexpr const char* kVersion = "@PROJECT_VERSION@";
+}  // namespace fpvsim
