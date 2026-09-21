@@ -102,6 +102,42 @@ def parse_raw_imu(payload: bytes) -> MspRawImu:
     return MspRawImu(values[0:3], values[3:6], values[6:9])
 
 
+@dataclass(frozen=True)
+class MspAnalog:
+    voltage_v: float
+    current_a: float
+    consumed_mah: int
+
+
+@dataclass(frozen=True)
+class MspMotorTelemetry:
+    rpm: int
+    temperature_c: int
+    voltage_v: float
+    current_a: float
+    consumption_mah: int
+
+
+def parse_analog(payload: bytes) -> MspAnalog:
+    _legacy_voltage, consumed_mah, _rssi, current_ca, voltage_cv = struct.unpack_from(
+        "<BHHhH", payload, 0
+    )
+    return MspAnalog(voltage_cv / 100.0, current_ca / 100.0, consumed_mah)
+
+
+def parse_motor_telemetry(payload: bytes) -> list[MspMotorTelemetry]:
+    record = struct.Struct("<IHBHHH")
+    motors: list[MspMotorTelemetry] = []
+    for index in range(payload[0]):
+        rpm, _invalid, temperature, voltage_cv, current_ca, consumption = record.unpack_from(
+            payload, 1 + index * record.size
+        )
+        motors.append(
+            MspMotorTelemetry(rpm, temperature, voltage_cv / 100.0, current_ca / 100.0, consumption)
+        )
+    return motors
+
+
 def parse_rc(payload: bytes) -> list[int]:
     """Channels in µs in Betaflight's internal order: roll, pitch, yaw, throttle, AUX1, ..."""
     count = len(payload) // 2

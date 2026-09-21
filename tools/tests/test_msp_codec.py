@@ -6,8 +6,10 @@ from simtools.msp import (
     MspCommand,
     MspDecoder,
     encode_request,
+    parse_analog,
     parse_attitude,
     parse_motor,
+    parse_motor_telemetry,
     parse_raw_imu,
     parse_rc,
     parse_status_ex,
@@ -88,6 +90,20 @@ def test_raw_imu_splits_into_acc_gyro_mag() -> None:
     assert imu.acc_counts == (1, 2, 3)
     assert imu.gyro_dps == (-4, -5, -6)
     assert imu.mag_counts == (7, 8, 9)
+
+
+def test_analog_scales_voltage_and_current() -> None:
+    analog = parse_analog(struct.pack("<BHHhH", 235, 492, 0, 3000, 2350))
+    assert (analog.voltage_v, analog.current_a, analog.consumed_mah) == (23.5, 30.0, 492)
+
+
+def test_motor_telemetry_reads_one_record_per_motor() -> None:
+    payload = bytes([2]) + struct.pack("<IHBHHH", 20000, 0, 41, 2350, 750, 123)
+    payload += struct.pack("<IHBHHH", 21000, 0, 42, 2340, 760, 124)
+    motors = parse_motor_telemetry(payload)
+    assert [m.rpm for m in motors] == [20000, 21000]
+    assert (motors[1].temperature_c, motors[1].voltage_v, motors[1].current_a) == (42, 23.4, 7.6)
+    assert motors[0].consumption_mah == 123
 
 
 def test_rc_payload_parses_as_uint16_list() -> None:

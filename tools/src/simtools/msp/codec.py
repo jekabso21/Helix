@@ -17,6 +17,7 @@ class MspCommand(IntEnum):
     ATTITUDE = 108
     ALTITUDE = 109
     ANALOG = 110
+    MOTOR_TELEMETRY = 139
     STATUS_EX = 150
     SET_RAW_RC = 200
 
