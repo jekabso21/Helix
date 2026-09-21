@@ -33,6 +33,7 @@ CMake presets: `dev` (GCC, Debug, ASan and UBSan), `clang` (Clang, warnings as e
 ./scripts/run_app.sh -- --screenshot /tmp/app.png           # save the window content and quit
 uv run --project tools python tools/spikes/spin_motors.py   # arm Betaflight SITL, read motors
 uv run --project tools python tools/spikes/radio_passthrough.py --duration 60   # USB radio -> SITL
+./scripts/configurator_bridge.sh                            # WebSocket bridge for app.betaflight.com
 ```
 
 ## License
