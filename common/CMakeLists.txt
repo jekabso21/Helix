@@ -4,7 +4,6 @@ target_include_directories(fpvsim_common INTERFACE include)
 target_link_libraries(fpvsim_common INTERFACE fpvsim::eigen)
 
 fpvsim_add_test(common_tests
-    tests/test_main.cpp
     tests/sim_time_test.cpp
     tests/frames_test.cpp
     LIBS fpvsim::common)

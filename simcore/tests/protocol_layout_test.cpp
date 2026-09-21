@@ -1,4 +1,4 @@
-#include <doctest/doctest.h>
+#include <gtest/gtest.h>
 
 #include <cstddef>
 #include <cstring>
@@ -35,7 +35,7 @@ static_assert(sizeof(upstream::servo_packet_raw) == sizeof(bf::ServoPacketRaw));
 static_assert(offsetof(upstream::servo_packet_raw, pwm_output_raw) ==
               offsetof(bf::ServoPacketRaw, pwm_output_raw));
 
-TEST_CASE("fdm_packet_bytes_read_back_through_the_upstream_struct") {
+TEST(ProtocolLayoutTest, FdmPacketBytesReadBackThroughTheUpstreamStruct) {
   bf::FdmPacket ours{};
   ours.timestamp = 1.5;
   ours.imu_angular_velocity_rpy = {0.1, 0.2, 0.3};
@@ -48,35 +48,35 @@ TEST_CASE("fdm_packet_bytes_read_back_through_the_upstream_struct") {
   upstream::fdm_packet theirs{};
   std::memcpy(&theirs, &ours, sizeof(ours));
 
-  CHECK(theirs.timestamp == 1.5);
-  CHECK(theirs.imu_angular_velocity_rpy[0] == 0.1);
-  CHECK(theirs.imu_angular_velocity_rpy[2] == 0.3);
-  CHECK(theirs.imu_linear_acceleration_xyz[0] == -1.0);
-  CHECK(theirs.imu_linear_acceleration_xyz[2] == -9.80665);
-  CHECK(theirs.imu_orientation_quat[0] == 0.5);
-  CHECK(theirs.imu_orientation_quat[3] == -0.25);
-  CHECK(theirs.velocity_xyz[1] == 5.0);
-  CHECK(theirs.position_xyz[0] == 24.0);
-  CHECK(theirs.position_xyz[2] == 12.5);
-  CHECK(theirs.pressure == 101325.0);
+  EXPECT_EQ(theirs.timestamp, 1.5);
+  EXPECT_EQ(theirs.imu_angular_velocity_rpy[0], 0.1);
+  EXPECT_EQ(theirs.imu_angular_velocity_rpy[2], 0.3);
+  EXPECT_EQ(theirs.imu_linear_acceleration_xyz[0], -1.0);
+  EXPECT_EQ(theirs.imu_linear_acceleration_xyz[2], -9.80665);
+  EXPECT_EQ(theirs.imu_orientation_quat[0], 0.5);
+  EXPECT_EQ(theirs.imu_orientation_quat[3], -0.25);
+  EXPECT_EQ(theirs.velocity_xyz[1], 5.0);
+  EXPECT_EQ(theirs.position_xyz[0], 24.0);
+  EXPECT_EQ(theirs.position_xyz[2], 12.5);
+  EXPECT_EQ(theirs.pressure, 101325.0);
 }
 
-TEST_CASE("upstream_servo_packets_read_back_through_our_structs") {
+TEST(ProtocolLayoutTest, UpstreamServoPacketsReadBackThroughOurStructs) {
   upstream::servo_packet_raw theirs_raw{};
   theirs_raw.motorCount = 4;
   theirs_raw.pwm_output_raw[0] = 1100.0F;
   theirs_raw.pwm_output_raw[15] = 1900.0F;
   bf::ServoPacketRaw ours_raw{};
   std::memcpy(&ours_raw, &theirs_raw, sizeof(ours_raw));
-  CHECK(ours_raw.motor_count == 4);
-  CHECK(ours_raw.pwm_output_raw[0] == 1100.0F);
-  CHECK(ours_raw.pwm_output_raw[15] == 1900.0F);
+  EXPECT_EQ(ours_raw.motor_count, 4);
+  EXPECT_EQ(ours_raw.pwm_output_raw[0], 1100.0F);
+  EXPECT_EQ(ours_raw.pwm_output_raw[15], 1900.0F);
 
   upstream::servo_packet theirs{};
   theirs.motor_speed[0] = 0.25F;
   theirs.motor_speed[3] = 1.0F;
   bf::ServoPacket ours{};
   std::memcpy(&ours, &theirs, sizeof(ours));
-  CHECK(ours.motor_speed[0] == 0.25F);
-  CHECK(ours.motor_speed[3] == 1.0F);
+  EXPECT_EQ(ours.motor_speed[0], 0.25F);
+  EXPECT_EQ(ours.motor_speed[3], 1.0F);
 }

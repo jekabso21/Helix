@@ -26,19 +26,20 @@ FetchContent_Declare(CLI11
     GIT_SHALLOW TRUE
     SYSTEM)
 
-FetchContent_Declare(doctest
-    GIT_REPOSITORY https://github.com/doctest/doctest.git
-    GIT_TAG v2.4.12
+FetchContent_Declare(googletest
+    GIT_REPOSITORY https://github.com/google/googletest.git
+    GIT_TAG v1.17.0
     GIT_SHALLOW TRUE
     SYSTEM)
 
 set(JSON_BuildTests OFF CACHE INTERNAL "")
 set(CLI11_BUILD_TESTS OFF CACHE INTERNAL "")
 set(CLI11_BUILD_EXAMPLES OFF CACHE INTERNAL "")
-set(DOCTEST_WITH_TESTS OFF CACHE INTERNAL "")
-set(DOCTEST_NO_INSTALL ON CACHE INTERNAL "")
+set(BUILD_GMOCK OFF CACHE INTERNAL "")
+set(INSTALL_GTEST OFF CACHE INTERNAL "")
 
-FetchContent_MakeAvailable(eigen nlohmann_json spdlog CLI11 doctest)
+FetchContent_MakeAvailable(eigen nlohmann_json spdlog CLI11 googletest)
+include(GoogleTest)
 
 add_library(fpvsim_eigen INTERFACE)
 add_library(fpvsim::eigen ALIAS fpvsim_eigen)

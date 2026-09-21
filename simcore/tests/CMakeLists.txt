@@ -34,7 +34,6 @@ ${bf_structs}
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${bf_target_h})
 
 fpvsim_add_test(simcore_tests
-    ${PROJECT_SOURCE_DIR}/common/tests/test_main.cpp
     protocol_layout_test.cpp)
 target_include_directories(simcore_tests PRIVATE
     ${PROJECT_SOURCE_DIR}/simcore/src
