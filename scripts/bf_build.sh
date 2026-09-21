@@ -8,7 +8,8 @@ out_dir="${repo_root}/build/betaflight"
 worktree="${out_dir}/worktree"
 
 # Legacy FDM semantics: pressure from the packet, quaternion used as sent
-bf_extra_flags="-DENABLE_GAZEBO_BRIDGE=0"
+bf_extra_flags="-DENABLE_GAZEBO_BRIDGE=0 ${BF_EXTRA_FLAGS:-}"
+bf_output_name="${BF_OUTPUT_NAME:-betaflight_SITL.elf}"
 
 if [[ ! -e "${bf_dir}/.git" ]]; then
     echo "error: ${bf_dir} is empty. Run: git submodule update --init third_party/betaflight" >&2
@@ -39,6 +40,6 @@ done < <(git -C "${worktree}" config --file .gitmodules --list | awk -F= '
 
 make -C "${worktree}" TARGET=SITL EXTRA_FLAGS="${bf_extra_flags}" -j"$(nproc)"
 
-cp "${worktree}/obj/main/betaflight_SITL.elf" "${out_dir}/betaflight_SITL.elf"
+cp "${worktree}/obj/main/betaflight_SITL.elf" "${out_dir}/${bf_output_name}"
 git -C "${bf_dir}" describe --tags --always >"${out_dir}/betaflight_version.txt"
-echo "built ${out_dir}/betaflight_SITL.elf ($(cat "${out_dir}/betaflight_version.txt"), ${bf_extra_flags})"
+echo "built ${out_dir}/${bf_output_name} ($(cat "${out_dir}/betaflight_version.txt"), ${bf_extra_flags})"

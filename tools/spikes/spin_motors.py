@@ -59,7 +59,7 @@ def start_sitl(binary: Path, workdir: Path, log_name: str) -> subprocess.Popen[b
             )
     log = (workdir / log_name).open("wb")
     # setpriv makes the kernel kill SITL when this script dies, however it ends
-    command = ["setpriv", "--pdeathsig", "KILL", str(binary)]
+    command = ["setpriv", "--pdeathsig", "KILL", str(binary.resolve())]
     return subprocess.Popen(command, cwd=workdir, stdout=log, stderr=subprocess.STDOUT)
 
 
@@ -88,6 +88,7 @@ class StateSender(threading.Thread):
         self.acc = (0.0, 0.0, -STANDARD_GRAVITY_MPS2)  # specific force at rest, FRD: points up
         self.quat = (1.0, 0.0, 0.0, 0.0)  # w x y z
         self._stop_event = threading.Event()
+        self.steps_sent = 0
 
     def stop(self) -> None:
         self._stop_event.set()
@@ -114,6 +115,7 @@ class StateSender(threading.Thread):
             if step % rc_every == 0:
                 sock.sendto(RC_STRUCT.pack(t, *self.channels), (HOST, PORT_RC))
             step += 1
+            self.steps_sent = step
             delay = start + step / FDM_RATE_HZ - time.perf_counter()
             if delay > 0:
                 time.sleep(delay)
