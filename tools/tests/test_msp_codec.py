@@ -6,7 +6,9 @@ from simtools.msp import (
     MspCommand,
     MspDecoder,
     encode_request,
+    parse_attitude,
     parse_motor,
+    parse_raw_imu,
     parse_rc,
     parse_status_ex,
 )
@@ -74,6 +76,18 @@ def test_status_ex_reports_armed_and_arming_disable_names() -> None:
     assert status.armed
     assert status.pid_cycle_time_us == 125
     assert status.arming_disable_names == ["RXLOSS", "THROTTLE"]
+
+
+def test_attitude_is_signed_with_roll_and_pitch_in_decidegrees() -> None:
+    attitude = parse_attitude(struct.pack("<3h", 205, -153, 270))
+    assert (attitude.roll_deg, attitude.pitch_deg, attitude.yaw_deg) == (20.5, -15.3, 270.0)
+
+
+def test_raw_imu_splits_into_acc_gyro_mag() -> None:
+    imu = parse_raw_imu(struct.pack("<9h", 1, 2, 3, -4, -5, -6, 7, 8, 9))
+    assert imu.acc_counts == (1, 2, 3)
+    assert imu.gyro_dps == (-4, -5, -6)
+    assert imu.mag_counts == (7, 8, 9)
 
 
 def test_rc_payload_parses_as_uint16_list() -> None:

@@ -78,6 +78,30 @@ def parse_status_ex(payload: bytes) -> MspStatus:
     )
 
 
+@dataclass(frozen=True)
+class MspAttitude:
+    roll_deg: float
+    pitch_deg: float
+    yaw_deg: float
+
+
+@dataclass(frozen=True)
+class MspRawImu:
+    acc_counts: tuple[int, int, int]
+    gyro_dps: tuple[int, int, int]
+    mag_counts: tuple[int, int, int]
+
+
+def parse_attitude(payload: bytes) -> MspAttitude:
+    roll_decideg, pitch_decideg, yaw_deg = struct.unpack_from("<3h", payload, 0)
+    return MspAttitude(roll_decideg / 10.0, pitch_decideg / 10.0, float(yaw_deg))
+
+
+def parse_raw_imu(payload: bytes) -> MspRawImu:
+    values = struct.unpack_from("<9h", payload, 0)
+    return MspRawImu(values[0:3], values[3:6], values[6:9])
+
+
 def parse_rc(payload: bytes) -> list[int]:
     """Channels in µs in Betaflight's internal order: roll, pitch, yaw, throttle, AUX1, ..."""
     count = len(payload) // 2

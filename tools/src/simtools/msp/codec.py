@@ -11,6 +11,7 @@ _MAX_PAYLOAD = 255
 class MspCommand(IntEnum):
     API_VERSION = 1
     STATUS = 101
+    RAW_IMU = 102
     MOTOR = 104
     RC = 105
     ATTITUDE = 108
