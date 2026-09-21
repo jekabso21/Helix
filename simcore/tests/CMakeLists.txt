@@ -1,3 +1,13 @@
+fpvsim_add_test(simcore_model_tests
+    aero_test.cpp
+    atmosphere_test.cpp
+    contact_test.cpp
+    imu_test.cpp
+    motor_test.cpp
+    propulsion_test.cpp
+    rigid_body_test.cpp
+    LIBS fpvsim::simcore_models)
+
 set(bf_target_h
     ${PROJECT_SOURCE_DIR}/third_party/betaflight/src/platform/SIMULATOR/target/SITL/target.h)
 
@@ -33,8 +43,8 @@ ${bf_structs}
 " @ONLY)
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${bf_target_h})
 
-fpvsim_add_test(simcore_tests
+fpvsim_add_test(simcore_protocol_tests
     protocol_layout_test.cpp)
-target_include_directories(simcore_tests PRIVATE
+target_include_directories(simcore_protocol_tests PRIVATE
     ${PROJECT_SOURCE_DIR}/simcore/src
     ${generated_dir})
