@@ -1,0 +1,142 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://ui/main_window.gd" id="1"]
+[ext_resource type="PackedScene" path="res://ui/placeholder_panel.tscn" id="2"]
+
+[node name="MainWindow" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1")
+
+[node name="Layout" type="VBoxContainer" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="Toolbar" type="HBoxContainer" parent="Layout"]
+layout_mode = 2
+
+[node name="Session" type="OptionButton" parent="Layout/Toolbar"]
+custom_minimum_size = Vector2(220, 0)
+layout_mode = 2
+disabled = true
+selected = 0
+item_count = 1
+popup/item_0/text = "(no sessions yet)"
+popup/item_0/id = 0
+
+[node name="Start" type="Button" parent="Layout/Toolbar"]
+layout_mode = 2
+disabled = true
+text = "Start"
+
+[node name="Stop" type="Button" parent="Layout/Toolbar"]
+layout_mode = 2
+disabled = true
+text = "Stop"
+
+[node name="Pause" type="Button" parent="Layout/Toolbar"]
+layout_mode = 2
+disabled = true
+text = "Pause"
+
+[node name="Reset" type="Button" parent="Layout/Toolbar"]
+layout_mode = 2
+disabled = true
+text = "Reset"
+
+[node name="Separator" type="VSeparator" parent="Layout/Toolbar"]
+layout_mode = 2
+
+[node name="SimTime" type="Label" parent="Layout/Toolbar"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "t 00:00.000  x1.00"
+
+[node name="StatusBetaflight" type="Label" parent="Layout/Toolbar"]
+layout_mode = 2
+text = "BF -"
+
+[node name="StatusSimcore" type="Label" parent="Layout/Toolbar"]
+layout_mode = 2
+text = "core -"
+
+[node name="StatusSimvideo" type="Label" parent="Layout/Toolbar"]
+layout_mode = 2
+text = "video -"
+
+[node name="StatusOutputs" type="Label" parent="Layout/Toolbar"]
+layout_mode = 2
+text = "out -  "
+
+[node name="Body" type="HSplitContainer" parent="Layout"]
+layout_mode = 2
+size_flags_vertical = 3
+split_offset = 260
+
+[node name="LeftDock" type="TabContainer" parent="Layout/Body"]
+custom_minimum_size = Vector2(240, 0)
+layout_mode = 2
+
+[node name="Drone" parent="Layout/Body/LeftDock" instance=ExtResource("2")]
+layout_mode = 2
+title = "Drone: parts, CG preview, apply"
+
+[node name="Environment" parent="Layout/Body/LeftDock" instance=ExtResource("2")]
+visible = false
+layout_mode = 2
+title = "Environment: wind, weather, time of day"
+
+[node name="Failures" parent="Layout/Body/LeftDock" instance=ExtResource("2")]
+visible = false
+layout_mode = 2
+title = "Failures: inject and clear"
+
+[node name="Scenario" parent="Layout/Body/LeftDock" instance=ExtResource("2")]
+visible = false
+layout_mode = 2
+title = "Scenario: load, run, metrics"
+
+[node name="Outputs" parent="Layout/Body/LeftDock" instance=ExtResource("2")]
+visible = false
+layout_mode = 2
+title = "Outputs: video outputs per camera"
+
+[node name="Input" parent="Layout/Body/LeftDock" instance=ExtResource("2")]
+visible = false
+layout_mode = 2
+title = "Input: device status, channel monitor"
+
+[node name="Center" type="HSplitContainer" parent="Layout/Body"]
+layout_mode = 2
+size_flags_horizontal = 3
+split_offset = -340
+
+[node name="MainView" parent="Layout/Body/Center" instance=ExtResource("2")]
+layout_mode = 2
+title = "Main 3D view: chase / side / orbit / free / top"
+
+[node name="RightDock" type="VSplitContainer" parent="Layout/Body/Center"]
+custom_minimum_size = Vector2(320, 0)
+layout_mode = 2
+
+[node name="CameraFeed" parent="Layout/Body/Center/RightDock" instance=ExtResource("2")]
+layout_mode = 2
+title = "Camera feed (exactly as sent)  [F: pop out]"
+
+[node name="Telemetry" parent="Layout/Body/Center/RightDock" instance=ExtResource("2")]
+layout_mode = 2
+title = "Telemetry: flight, battery, motors, FC, input"
+
+[node name="Plots" parent="Layout" instance=ExtResource("2")]
+custom_minimum_size = Vector2(0, 140)
+layout_mode = 2
+size_flags_vertical = 0
+title = "Live plots (last 10 s): motor outputs | body rates | battery"

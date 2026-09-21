@@ -1,0 +1,32 @@
+config_version=5
+
+[application]
+
+config/name="fpvsim"
+config/description="Graphical SITL simulator for FPV drones running Betaflight"
+run/main_scene="res://scenes/main_window.tscn"
+config/features=PackedStringArray("4.7", "Forward Plus")
+
+[autoload]
+
+DevScreenshot="*res://scripts/dev_screenshot.gd"
+
+[debug]
+
+gdscript/warnings/untyped_declaration=2
+gdscript/warnings/inferred_declaration=0
+gdscript/warnings/unsafe_property_access=1
+gdscript/warnings/unsafe_method_access=1
+gdscript/warnings/unsafe_cast=1
+gdscript/warnings/unsafe_call_argument=1
+
+[display]
+
+window/size/viewport_width=1600
+window/size/viewport_height=900
+window/subwindows/embed_subwindows=false
+display_server/driver.linuxbsd="wayland"
+
+[gui]
+
+theme/custom="res://ui/theme.tres"
