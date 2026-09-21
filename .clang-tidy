@@ -10,3 +10,4 @@ Checks: >
   -bugprone-easily-swappable-parameters
 WarningsAsErrors: ''
 HeaderFilterRegex: '(common|simcore|simvideo|simlink)/.*'
+ExcludeHeaderFilterRegex: '.*/build/.*'

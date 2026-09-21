@@ -8,3 +8,5 @@ target_link_libraries(simcore PRIVATE
     CLI11::CLI11
     spdlog::spdlog
     nlohmann_json::nlohmann_json)
+
+add_subdirectory(tests)
