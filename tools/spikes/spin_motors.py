@@ -52,8 +52,15 @@ def connect_uart(port: int, timeout_s: float, check_msp: bool) -> MspClient:
 
 
 def start_sitl(binary: Path, workdir: Path, log_name: str) -> subprocess.Popen[bytes]:
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
+        if probe.connect_ex((HOST, PORT_UART1)) == 0:
+            raise SystemExit(
+                f"error: another SITL already listens on TCP {PORT_UART1}; stop it first"
+            )
     log = (workdir / log_name).open("wb")
-    return subprocess.Popen([str(binary)], cwd=workdir, stdout=log, stderr=subprocess.STDOUT)
+    # setpriv makes the kernel kill SITL when this script dies, however it ends
+    command = ["setpriv", "--pdeathsig", "KILL", str(binary)]
+    return subprocess.Popen(command, cwd=workdir, stdout=log, stderr=subprocess.STDOUT)
 
 
 def apply_cli_config(cli_script: Path) -> str:
@@ -77,11 +84,15 @@ class StateSender(threading.Thread):
     def __init__(self) -> None:
         super().__init__(daemon=True)
         self.channels = [1500, 1500, 1000, 1500] + [1000] * 12  # A, E, T, R, AUX1...
+        self.gyro = (0.0, 0.0, 0.0)
+        self.acc = (0.0, 0.0, -STANDARD_GRAVITY_MPS2)  # specific force at rest, FRD: points up
+        self.quat = (1.0, 0.0, 0.0, 0.0)  # w x y z
         self._stop_event = threading.Event()
 
     def stop(self) -> None:
         self._stop_event.set()
-        self.join()
+        if self.is_alive():
+            self.join()
 
     def run(self) -> None:
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -92,9 +103,9 @@ class StateSender(threading.Thread):
             t = step / FDM_RATE_HZ
             fdm = FDM_STRUCT.pack(
                 t,
-                0.0, 0.0, 0.0,  # angular velocity, rad/s
-                0.0, 0.0, -STANDARD_GRAVITY_MPS2,  # specific force at rest, FRD: points up
-                1.0, 0.0, 0.0, 0.0,  # level attitude, w x y z
+                *self.gyro,
+                *self.acc,
+                *self.quat,
                 0.0, 0.0, 0.0,  # velocity
                 *ORIGIN_LON_LAT_ALT,
                 SEA_LEVEL_PRESSURE_PA,
@@ -160,8 +171,9 @@ def main() -> int:
     sender = StateSender()
     success = False
     try:
-        sender.start()
         with connect_uart(PORT_UART3, 5.0, check_msp=True) as msp:
+            # Stream only after SITL answers MSP: a packet arriving during its boot crashes it
+            sender.start()
             print("3. waiting for arming disable flags to clear (arm switch low)")
             deadline = time.monotonic() + 20.0
             while time.monotonic() < deadline:

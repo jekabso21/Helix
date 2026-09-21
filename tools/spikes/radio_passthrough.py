@@ -107,8 +107,9 @@ def main() -> int:
     sitl = start_sitl(args.binary, workdir, "sitl_run.log")
     sender = StateSender()
     try:
-        sender.start()
         with connect_uart(PORT_UART3, 5.0, check_msp=True) as msp:
+            # Stream only after SITL answers MSP: a packet arriving during its boot crashes it
+            sender.start()
             print("sent = A E T R AUX1 AUX2 | fc_rc = roll pitch yaw throttle AUX1 AUX2")
             end = time.monotonic() + args.duration
             next_print = 0.0
