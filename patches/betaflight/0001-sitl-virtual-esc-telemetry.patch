@@ -1,0 +1,101 @@
+diff --git a/src/main/drivers/serial_tcp.c b/src/main/drivers/serial_tcp.c
+index a922cc767..fff26a681 100644
+--- a/src/main/drivers/serial_tcp.c
++++ b/src/main/drivers/serial_tcp.c
+@@ -259,6 +259,11 @@ void tcpDataIn(tcpPort_t *instance, uint8_t* ch, int size)
+ 
+     while (size--) {
+ //        printf("%c", *ch);
++        // Callback-driven users (ESC sensor, serial RX) never poll the buffer, as with a UART RX interrupt
++        if (s->port.rxCallback) {
++            s->port.rxCallback(*(ch++), s->port.rxCallbackData);
++            continue;
++        }
+         s->port.rxBuffer[s->port.rxBufferHead] = *(ch++);
+         if (s->port.rxBufferHead + 1 >= s->port.rxBufferSize) {
+             s->port.rxBufferHead = 0;
+diff --git a/src/main/target/common_post.h b/src/main/target/common_post.h
+index 1bdd7fd86..3e8abcf4d 100644
+--- a/src/main/target/common_post.h
++++ b/src/main/target/common_post.h
+@@ -299,7 +299,8 @@
+ #define USE_VTX_RTC6705
+ #endif
+ 
+-#ifndef USE_DSHOT
++// SITL has no DShot; its ESC telemetry comes from the simulator's virtual ESC
++#if !defined(USE_DSHOT) && !defined(SITL)
+ #undef USE_ESC_SENSOR
+ #endif
+ 
+diff --git a/src/platform/SIMULATOR/sitl.c b/src/platform/SIMULATOR/sitl.c
+index ee216ef67..28e14f920 100644
+--- a/src/platform/SIMULATOR/sitl.c
++++ b/src/platform/SIMULATOR/sitl.c
+@@ -103,7 +103,7 @@ static struct timespec start_time;
+ static double simRate = 1.0;
+ static pthread_t tcpWorker, udpWorker, udpWorkerRC;
+ static bool workerRunning = true;
+-static udpLink_t stateLink, pwmLink, pwmRawLink, rcLink;
++static udpLink_t stateLink, pwmLink, pwmRawLink, rcLink, escRequestLink;
+ static pthread_mutex_t updateLock;
+ static pthread_mutex_t mainLoopLock;
+ static char simulator_ip[32] = "127.0.0.1";
+@@ -202,6 +202,7 @@ static void gpxTrackClose(void)
+ #define PORT_PWM        9002    // Out
+ #define PORT_STATE      9003    // In
+ #define PORT_RC         9004    // In
++#define PORT_ESC_REQUEST 9005   // Out
+ 
+ int targetParseArgs(int argc, char * argv[])
+ {
+@@ -613,6 +614,9 @@ void systemInit(void)
+     ret = udpInit(&pwmRawLink, simulator_ip, PORT_PWM_RAW, false);
+     printf("[SITL] init PwmOut UDP link to RF9 %s:%d...%d\n", simulator_ip, PORT_PWM_RAW, ret);
+ 
++    ret = udpInit(&escRequestLink, simulator_ip, PORT_ESC_REQUEST, false);
++    printf("[SITL] init ESC telemetry request UDP link to %s:%d...%d\n", simulator_ip, PORT_ESC_REQUEST, ret);
++
+     ret = udpInit(&stateLink, NULL, PORT_STATE, true);
+     printf("[SITL] start UDP server @%d...%d\n", PORT_STATE, ret);
+ 
+@@ -887,6 +891,30 @@ void servoWrite(uint8_t index, float value)
+     }
+ }
+ 
++#if defined(USE_ESC_SENSOR) && !defined(USE_DSHOT)
++// drivers/dshot.c provides these only with USE_DSHOT; the ESC sensor needs them
++#define SITL_ERPM_PER_LSB 100.0f
++static float sitlErpmToHz;
++
++void initDshotTelemetry(const timeUs_t looptimeUs)
++{
++    UNUSED(looptimeUs);
++    sitlErpmToHz = SITL_ERPM_PER_LSB / SECONDS_PER_MINUTE / (motorConfig()->motorPoleCount / 2.0f);
++}
++
++float erpmToRpm(uint32_t erpm)
++{
++    return erpm * sitlErpmToHz * SECONDS_PER_MINUTE;
++}
++#endif
++
++// A real FC sets the telemetry bit in one motor's DShot frame; the virtual ESC gets the motor index instead
++static void sitlRequestEscTelemetry(unsigned index)
++{
++    const uint8_t motorIndex = (uint8_t)index;
++    udpSend(&escRequestLink, &motorIndex, sizeof(motorIndex));
++}
++
+ static const motorVTable_t vTable = {
+     .postInit = motorPostInitNull,
+     .convertExternalToMotor = pwmConvertFromExternal,
+@@ -899,7 +927,7 @@ static const motorVTable_t vTable = {
+     .writeInt = pwmWriteMotorInt,
+     .updateComplete = pwmCompleteMotorUpdate,
+     .shutdown = pwmShutdownPulsesForAllMotors,
+-    .requestTelemetry = NULL,
++    .requestTelemetry = sitlRequestEscTelemetry,
+     .isMotorIdle = NULL,
+     .getMotorIO = NULL,
+ };
