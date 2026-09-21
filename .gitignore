@@ -1,0 +1,10 @@
+build/
+runs/
+data/terrain/
+.cache/
+compile_commands.json
+__pycache__/
+.venv/
+.pytest_cache/
+.ruff_cache/
+app/.godot/
