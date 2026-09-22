@@ -2,7 +2,7 @@ class_name RawVideoOut
 extends RefCounted
 ## Serves RGB8 frames to one TCP client (gst-launch tcpclientsrc); frames are dropped while nobody reads
 
-const MAX_QUEUED := 2
+const MAX_QUEUED := 1
 
 var port: int = 5700
 var frames_written: int = 0

@@ -6,6 +6,8 @@ const CAMERA_UPTILT_DEG := 35.0
 const CAMERA_SIZE := Vector2i(640, 360)
 const RAW_PORT := 5700
 
+var _raw_port: int = RAW_PORT
+
 @export var world_view_path: NodePath
 
 @onready var _header: Label = $Header
@@ -26,10 +28,15 @@ func _ready() -> void:
 	_viewport.size = CAMERA_SIZE
 	_view.texture = _viewport.get_texture()
 	_camera.current = true
+	var args := OS.get_cmdline_user_args()
+	var port_index := args.find("--raw-port")
+	if port_index >= 0 and port_index + 1 < args.size():
+		_raw_port = int(args[port_index + 1])
 	_raw_toggle.toggled.connect(_on_raw_toggled)
-	if OS.get_cmdline_user_args().has("--raw-video"):
+	if args.has("--raw-video"):
 		_raw_toggle.button_pressed = true
-	_command.text = "gst-launch-1.0 tcpclientsrc host=127.0.0.1 port=%d ! rawvideoparse format=rgb width=%d height=%d framerate=60/1 ! videoconvert ! autovideosink" % [RAW_PORT, CAMERA_SIZE.x, CAMERA_SIZE.y]
+	# sync=false: frames are shown as they arrive; with the clock, every dropped frame would add lag
+	_command.text = "gst-launch-1.0 tcpclientsrc host=127.0.0.1 port=%d ! rawvideoparse format=rgb width=%d height=%d framerate=60/1 ! videoconvert ! autovideosink sync=false" % [_raw_port, CAMERA_SIZE.x, CAMERA_SIZE.y]
 
 
 func _exit_tree() -> void:
@@ -40,7 +47,7 @@ func _exit_tree() -> void:
 func _on_raw_toggled(on: bool) -> void:
 	if on:
 		_raw = RawVideoOut.new()
-		if not _raw.start(RAW_PORT):
+		if not _raw.start(_raw_port):
 			_header.text = _raw.error
 			_raw = null
 			_raw_toggle.set_pressed_no_signal(false)
