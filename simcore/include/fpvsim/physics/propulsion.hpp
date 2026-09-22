@@ -20,7 +20,7 @@ struct MotorMount {
 
 // Force, torque and rotor angular momentum of all motors; other Loads fields are zero
 Loads propulsion_loads(const std::array<MotorMount, kMaxMotors>& mounts,
-                       const std::array<MotorOutput, kMaxMotors>& outputs, std::size_t motor_count,
-                       double rotor_inertia_kg_m2);
+                       const std::array<MotorParams, kMaxMotors>& motors,
+                       const std::array<MotorOutput, kMaxMotors>& outputs, std::size_t motor_count);
 
 }  // namespace fpvsim::physics

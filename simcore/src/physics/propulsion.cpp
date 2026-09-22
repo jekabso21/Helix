@@ -3,8 +3,9 @@
 namespace fpvsim::physics {
 
 Loads propulsion_loads(const std::array<MotorMount, kMaxMotors>& mounts,
-                       const std::array<MotorOutput, kMaxMotors>& outputs, std::size_t motor_count,
-                       double rotor_inertia_kg_m2) {
+                       const std::array<MotorParams, kMaxMotors>& motors,
+                       const std::array<MotorOutput, kMaxMotors>& outputs,
+                       std::size_t motor_count) {
   Loads loads{.force_frd = Eigen::Vector3d::Zero(),
               .force_ned = Eigen::Vector3d::Zero(),
               .torque_frd = Eigen::Vector3d::Zero(),
@@ -16,7 +17,7 @@ Loads propulsion_loads(const std::array<MotorMount, kMaxMotors>& mounts,
     loads.torque_frd += mount.position_frd.cross(thrust) +
                         mount.spin * outputs[i].reaction_torque_nm * mount.axis_frd;
     loads.rotor_momentum_frd +=
-        rotor_inertia_kg_m2 * outputs[i].speed_radps * mount.spin * -mount.axis_frd;
+        motors[i].rotor_inertia_kg_m2 * outputs[i].speed_radps * mount.spin * -mount.axis_frd;
   }
   return loads;
 }

@@ -37,6 +37,12 @@ inline std::array<physics::MotorMount, physics::kMaxMotors> quad_mounts() {
   return mounts;
 }
 
+inline std::array<physics::MotorParams, physics::kMaxMotors> quad_motors() {
+  std::array<physics::MotorParams, physics::kMaxMotors> motors{};
+  motors.fill(quad_motor());
+  return motors;
+}
+
 inline physics::ContactParams quad_contact() {
   physics::ContactParams params{};
   params.points_frd[0] = {kArmM, kArmM, 0.02};

@@ -39,8 +39,8 @@ TEST(PropulsionTest, HoverThrustEqualsWeight) {
   const double weight = quad::kMassKg * fpvsim::kStandardGravityMps2;
   const double speed = physics::hover_command(params, weight / 4.0) * params.max_speed_radps;
   const physics::Loads loads =
-      physics::propulsion_loads(quad::quad_mounts(), steady_outputs({speed, speed, speed, speed}),
-                                quad::kMotorCount, params.rotor_inertia_kg_m2);
+      physics::propulsion_loads(quad::quad_mounts(), quad::quad_motors(),
+                                steady_outputs({speed, speed, speed, speed}), quad::kMotorCount);
   const physics::Derivatives rates = physics::derivatives(
       physics::level_state_at(Eigen::Vector3d::Zero()), quad::quad_mass(), loads);
   EXPECT_LT(rates.acceleration_ned.norm(), 1e-9);
@@ -60,7 +60,7 @@ TEST(PropulsionTest, PerMotorTorqueSignsMatchBetaflightOrderAndSpin) {
     std::array<double, quad::kMotorCount> speeds = {1000.0, 1000.0, 1000.0, 1000.0};
     speeds[motor] = 1500.0;
     const physics::Loads loads = physics::propulsion_loads(
-        quad::quad_mounts(), steady_outputs(speeds), quad::kMotorCount, 6.0e-6);
+        quad::quad_mounts(), quad::quad_motors(), steady_outputs(speeds), quad::kMotorCount);
     for (int axis = 0; axis < 3; ++axis) {
       EXPECT_EQ(sign(loads.torque_frd[axis]), expected[motor][static_cast<std::size_t>(axis)])
           << "motor " << motor + 1 << " axis " << axis;
@@ -76,13 +76,14 @@ TEST(PropulsionTest, BetaflightCorrectionsOpposeTheDisturbance) {
     speeds[sped_up[axis][0]] = 1300.0;
     speeds[sped_up[axis][1]] = 1300.0;
     const physics::Loads loads = physics::propulsion_loads(
-        quad::quad_mounts(), steady_outputs(speeds), quad::kMotorCount, 6.0e-6);
+        quad::quad_mounts(), quad::quad_motors(), steady_outputs(speeds), quad::kMotorCount);
     EXPECT_LT(loads.torque_frd[static_cast<Eigen::Index>(axis)], 0.0) << "axis " << axis;
   }
 }
 
 TEST(PropulsionTest, ClockwiseRotorMomentumPointsDown) {
-  const physics::Loads loads = physics::propulsion_loads(
-      quad::quad_mounts(), steady_outputs({1000.0, 0.0, 0.0, 0.0}), quad::kMotorCount, 6.0e-6);
+  const physics::Loads loads =
+      physics::propulsion_loads(quad::quad_mounts(), quad::quad_motors(),
+                                steady_outputs({1000.0, 0.0, 0.0, 0.0}), quad::kMotorCount);
   EXPECT_NEAR(loads.rotor_momentum_frd.z(), 6.0e-6 * 1000.0, 1e-15);
 }
