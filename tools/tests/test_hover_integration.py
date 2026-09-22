@@ -10,15 +10,16 @@ import yaml
 
 from simtools.api import ControlClient
 from simtools.config import load_yaml, resolve_session, write_run_directory
+from simtools.msp import MspCommand, parse_analog, parse_motor_telemetry
 from simtools.proto import MESSAGE_SIZE, decode_render_state
 from simtools.simctl.launcher import find_simcore, run_headless
-from simtools.sitl import sitl_port_busy
+from simtools.sitl import connect_uart, sitl_port_busy
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SITL_BINARY = REPO_ROOT / "build/betaflight/betaflight_SITL.elf"
 TARGET_HEIGHT_M = 5.0
 DURATION_S = 36.0
-WINDOW_START_S = 16.0
+WINDOW_START_S = 18.0
 
 pytestmark = pytest.mark.integration
 
@@ -37,6 +38,8 @@ class ApiObserver(threading.Thread):
         self.telemetry: list[dict] = []
         self.render_states = 0
         self.last_render = None
+        self.analog = None
+        self.motor_telemetry: list = []
 
     def run(self) -> None:
         try:
@@ -68,10 +71,24 @@ class ApiObserver(threading.Thread):
             self.paused_state = client.request("get_state")
             self.time_advanced_during_pause_ns = self.paused_state["sim_time_ns"] - t0
             client.request("resume")
-            self.resumed_state = client.request("get_state")
+            # the snapshot of the step that applied the command can trail the response by a step
+            for _ in range(20):
+                self.resumed_state = client.request("get_state")
+                if not self.resumed_state["paused"]:
+                    break
+                time.sleep(0.01)
             sub = client.request("subscribe", {"topic": "telemetry", "rate_hz": 5})
             self.telemetry = list(client.events(6.0))
             client.request("unsubscribe", {"subscription_id": sub["subscription_id"]})
+            # what Betaflight believes about the battery and motors comes from the virtual ESC
+            msp = connect_uart(5763, timeout_s=5.0, check_msp=True)
+            try:
+                self.analog = parse_analog(msp.request(MspCommand.ANALOG))
+                self.motor_telemetry = parse_motor_telemetry(
+                    msp.request(MspCommand.MOTOR_TELEMETRY)
+                )
+            finally:
+                msp.close()
             end = time.monotonic() + 3.0
             while time.monotonic() < end:
                 try:
@@ -123,6 +140,14 @@ def test_altitude_hold_keeps_height_within_half_a_metre(tmp_path: Path) -> None:
     assert observer.paused_state["paused"] is True
     assert observer.resumed_state["paused"] is False
     assert observer.time_advanced_during_pause_ns == 0
+    last = observer.telemetry[-1]["data"]
+    assert observer.analog is not None
+    assert abs(observer.analog.voltage_v - last["battery"]["voltage_v"]) < 0.5
+    assert 2.0 < observer.analog.current_a < 60.0, observer.analog
+    assert len(observer.motor_telemetry) >= 4
+    for motor, seen in zip(last["motors"], observer.motor_telemetry[:4], strict=False):
+        assert abs(seen.rpm - motor["rpm"]) < 0.15 * motor["rpm"] + 200, (seen, motor)
+    assert 20.0 < last["battery"]["voltage_v"] < 25.2 and 0.0 < last["battery"]["soc"] < 1.0
     assert abs(elapsed - DURATION_S) < 8.0, f"realtime pacing off: {elapsed:.1f} s"
 
     with (run_dir / "data/truth.csv").open() as f:

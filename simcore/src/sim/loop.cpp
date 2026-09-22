@@ -63,6 +63,9 @@ Snapshot make_snapshot(SimTime t, std::int64_t step_index, const Vehicle& vehicl
     s.motor_rpm[i] = state.motor_speed_radps[i] * kRadPerSecToRpm;
     s.motor_thrust_n[i] = result.motors[i].thrust_n;
     s.motor_current_a[i] = result.motors[i].current_a;
+    s.motor_bus_current_a[i] = result.motors[i].bus_current_a;
+    s.motor_consumed_mah[i] = state.motor_consumed_ah[i] * 1000.0;
+    s.motor_erpm[i] = s.motor_rpm[i] * vehicle.params().motors[i].pole_pairs;
   }
   s.battery_voltage_v = state.battery.bus_voltage_v;
   s.battery_current_a = state.battery.current_a;
@@ -234,6 +237,8 @@ RunSummary run_realtime(const config::SessionConfig& session, const VehicleParam
                                .log_rate_hz = session.logging.rate_hz,
                                .truth_csv = session.logging.truth_csv,
                                .input_source = session.input.source,
+                               .esc = session.esc,
+                               .ambient_c = session.atmosphere.ground_temperature_k - 273.15,
                                .info = info},
                   snapshots, commands_in, results_out);
 
@@ -327,6 +332,8 @@ RunSummary run_realtime(const config::SessionConfig& session, const VehicleParam
                     .dropped_log_rows = dropped_snapshots,
                     .render_states_sent = io_stats.render_states_sent,
                     .api_requests = io_stats.api_requests,
+                    .esc_requests = io_stats.esc_requests,
+                    .esc_answered = io_stats.esc_answered,
                     .final_height_m = -vehicle.state().body.position_ned.z(),
                     .crashed = vehicle.state().crashed};
 }

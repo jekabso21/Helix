@@ -8,6 +8,7 @@
 
 #include <nlohmann/json.hpp>
 
+#include <fpvsim/config/session.hpp>
 #include <fpvsim/input/control.hpp>
 #include <fpvsim/sim/model_control.hpp>
 #include <fpvsim/sim/snapshot.hpp>
@@ -29,6 +30,8 @@ struct IoConfig {
   std::int64_t log_rate_hz;
   std::filesystem::path truth_csv;
   std::string input_source;
+  config::EscConfig esc;
+  double ambient_c;
   nlohmann::json info;
 };
 
@@ -37,6 +40,8 @@ struct IoStats {
   std::uint64_t log_rows = 0;
   std::uint64_t api_requests = 0;
   std::uint64_t clients_seen = 0;
+  std::uint64_t esc_requests = 0;
+  std::uint64_t esc_answered = 0;
 };
 
 // Everything that is not the physics loop: RenderState, truth log, control API, telemetry

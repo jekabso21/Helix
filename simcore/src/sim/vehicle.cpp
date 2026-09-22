@@ -13,6 +13,7 @@ Vehicle::Vehicle(VehicleParams params, const physics::RigidBodyState& spawn)
     : params_(std::move(params)),
       state_{.body = spawn,
              .motor_speed_radps = {},
+             .motor_consumed_ah = {},
              .battery = physics::initial_battery(params_.battery),
              .crashed = false},
       imu_noise_(params_.imu_noise) {}
@@ -20,6 +21,7 @@ Vehicle::Vehicle(VehicleParams params, const physics::RigidBodyState& spawn)
 void Vehicle::reset(const physics::RigidBodyState& spawn) {
   state_ = VehicleState{.body = spawn,
                         .motor_speed_radps = {},
+                        .motor_consumed_ah = {},
                         .battery = physics::initial_battery(params_.battery),
                         .crashed = false};
 }
@@ -58,6 +60,7 @@ StepResult Vehicle::step(const MotorCommandArray& commands, const env::Air& air,
                                            state_.motor_speed_radps[i], input, dt_s);
     state_.motor_speed_radps[i] = result.motors[i].speed_radps;
     bus_current += result.motors[i].bus_current_a;
+    state_.motor_consumed_ah[i] += result.motors[i].bus_current_a * dt_s / 3600.0;
   }
   state_.battery = physics::step_battery(params_.battery, state_.battery, bus_current, dt_s);
 

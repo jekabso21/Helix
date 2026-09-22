@@ -16,6 +16,8 @@ struct RunSummary {
   std::uint64_t dropped_log_rows;
   std::uint64_t render_states_sent;
   std::uint64_t api_requests;
+  std::uint64_t esc_requests;
+  std::uint64_t esc_answered;
   double final_height_m;
   bool crashed;
 };

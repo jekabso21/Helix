@@ -125,6 +125,16 @@ def resolve_session(session_path: Path, base_dir: Path) -> ResolvedSession:
         for line in cli_script.read_text().splitlines()
         if line.strip() and not line.strip().startswith("#")
     ] + list(session.betaflight.cli_extra)
+    bf_ports = session.betaflight.ports
+    esc_uart_port = bf_ports.uart_base + bf_ports.esc_uart - 1
+    if session.betaflight.virtual_esc:
+        cli_lines += [
+            "feature ESC_SENSOR",
+            f"serial {bf_ports.esc_uart - 1} 1024 115200 57600 0 115200",
+            "set battery_meter = ESC",
+            "set current_meter = ESC",
+            f"set motor_poles = {drone.motor.poles}",
+        ]
 
     resolved_input: dict[str, Any] = {
         "source": session.input.source,
@@ -154,7 +164,15 @@ def resolve_session(session_path: Path, base_dir: Path) -> ResolvedSession:
         "seed": session.seed,
         "physics_rate_hz": session.physics_rate_hz,
         "duration_s": session.duration_s,
-        "betaflight": {"host": session.betaflight.host, "ports": ports},
+        "betaflight": {
+            "host": session.betaflight.host,
+            "ports": ports,
+            "esc": {
+                "enabled": session.betaflight.virtual_esc,
+                "request_port": bf_ports.esc_request,
+                "uart_port": esc_uart_port,
+            },
+        },
         "origin": {
             "lat_rad": units.deg_to_rad(session.origin.lat_deg),
             "lon_rad": units.deg_to_rad(session.origin.lon_deg),

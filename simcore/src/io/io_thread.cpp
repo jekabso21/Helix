@@ -20,6 +20,7 @@
 #include <Eigen/Geometry>
 
 #include <fpvsim/api/protocol.hpp>
+#include <fpvsim/bridge/virtual_esc.hpp>
 #include <fpvsim/config/session.hpp>
 #include <fpvsim/frames.hpp>
 #include <fpvsim/input/mapping_json.hpp>
@@ -172,7 +173,11 @@ class IoThread::Impl {
         truth_(config_.truth_csv),
         listen_fd_(listen_tcp(config_.api_host, config_.api_port)),
         render_every_(config_.physics_rate_hz / config_.state_rate_hz),
-        log_every_(config_.physics_rate_hz / config_.log_rate_hz) {}
+        log_every_(config_.physics_rate_hz / config_.log_rate_hz) {
+    if (config_.esc.enabled) {
+      esc_.emplace(config_.esc.host, config_.esc.request_port, config_.esc.uart_port);
+    }
+  }
 
   ~Impl() {
     for (const Client& client : clients_) {
@@ -185,7 +190,14 @@ class IoThread::Impl {
     while (!stop.stop_requested()) {
       drain_snapshots();
       drain_results();
+      if (esc_) {
+        esc_->service(latest_ ? &*latest_ : nullptr, config_.ambient_c);
+      }
       poll_clients();
+    }
+    if (esc_) {
+      stats_.esc_requests = esc_->stats().requests;
+      stats_.esc_answered = esc_->stats().answered;
     }
     drain_snapshots();
     truth_.flush();
@@ -509,6 +521,7 @@ class IoThread::Impl {
   std::vector<Client> clients_;
   std::vector<std::uint32_t> failed_;
   std::optional<sim::Snapshot> latest_;
+  std::optional<bridge::VirtualEsc> esc_;
   std::uint32_t next_client_id_ = 1;
   std::int64_t next_subscription_id_ = 1;
   std::uint32_t render_seq_ = 0;

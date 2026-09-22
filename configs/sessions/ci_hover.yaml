@@ -23,5 +23,5 @@ input:
     ki_us_per_m_s: 20
     kd_us_per_mps: 80
     integral_limit_us: 300
-    arm_delay_s: 6
+    arm_delay_s: 10  # Betaflight detects the battery only while disarmed, about 1 s after the first ESC frame
 logging: { rate_hz: 200, root: runs }

@@ -20,6 +20,14 @@ def test_ci_hover_session_resolves_to_si_json() -> None:
     assert session["input"]["altitude_hold"]["hover_throttle_us"] == pytest.approx(1213.6, abs=1.0)
     assert "aux 1 1 0 900 2100 0 0" in resolved.cli_lines
     assert "aux 0 0 0 1700 2100 0 0" in resolved.cli_lines
+    assert "feature ESC_SENSOR" in resolved.cli_lines
+    assert "serial 3 1024 115200 57600 0 115200" in resolved.cli_lines
+    assert "set motor_poles = 14" in resolved.cli_lines
+    assert session["betaflight"]["esc"] == {
+        "enabled": True,
+        "request_port": 9005,
+        "uart_port": 5764,
+    }
 
 
 def test_quad_x_layout_matches_betaflight_motor_order() -> None:
@@ -88,7 +96,7 @@ def test_run_directory_layout(tmp_path: Path) -> None:
     session = json.loads((run_dir / "resolved/session.json").read_text())
     assert session["drone"] == "drone.json"
     assert (run_dir / "resolved/drone.json").exists()
-    assert (run_dir / "betaflight/cli.txt").read_text().splitlines()[-1] == "aux 1 1 0 900 2100 0 0"
+    assert "aux 1 1 0 900 2100 0 0" in (run_dir / "betaflight/cli.txt").read_text().splitlines()
     meta = json.loads((run_dir / "meta.json").read_text())
     assert meta["session"] == "ci_hover" and meta["seed"] == 42
     for sub in ("logs", "data"):

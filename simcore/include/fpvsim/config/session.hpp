@@ -32,6 +32,13 @@ struct InputConfig {
   input::InputMapping mapping;              // only with gamepad
 };
 
+struct EscConfig {
+  bool enabled;
+  std::string host;
+  std::uint16_t request_port;
+  std::uint16_t uart_port;
+};
+
 struct ControlApiConfig {
   std::string host;
   std::uint16_t port;
@@ -53,6 +60,7 @@ struct SessionConfig {
   std::int64_t physics_rate_hz;
   double duration_s;  // 0 = run until stopped
   bridge::betaflight::Endpoints betaflight;
+  EscConfig esc;
   Origin origin;
   env::AtmosphereParams atmosphere;
   Spawn spawn;

@@ -142,6 +142,11 @@ SessionConfig parse_session(const std::string& json_text, const std::filesystem:
   cfg.betaflight.pwm_port = bf.at("ports").at("pwm").get<std::uint16_t>();
   cfg.betaflight.fdm_port = bf.at("ports").at("fdm").get<std::uint16_t>();
   cfg.betaflight.rc_port = bf.at("ports").at("rc").get<std::uint16_t>();
+  const Reader esc = bf.at("esc");
+  cfg.esc = {.enabled = esc.at("enabled").get<bool>(),
+             .host = cfg.betaflight.host,
+             .request_port = esc.at("request_port").get<std::uint16_t>(),
+             .uart_port = esc.at("uart_port").get<std::uint16_t>()};
 
   const Reader origin = root.at("origin");
   cfg.origin = {.latitude_rad = origin.at("lat_rad").number(),

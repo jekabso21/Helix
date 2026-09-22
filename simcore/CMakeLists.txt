@@ -17,6 +17,8 @@ target_link_libraries(fpvsim_simcore_models PUBLIC fpvsim::common PRIVATE fpvsim
 add_library(fpvsim_simcore STATIC
     src/api/protocol.cpp
     src/bridge/betaflight.cpp
+    src/bridge/kiss.cpp
+    src/bridge/virtual_esc.cpp
     src/config/session.cpp
     src/input/control.cpp
     src/input/joystick.cpp

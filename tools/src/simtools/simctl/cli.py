@@ -12,6 +12,7 @@ from simtools.config.resolver import (
     write_run_directory,
 )
 from simtools.modelc import compile_drone, export_glb, report, to_json
+from simtools.propfit import ThrustTableError, as_yaml, fit_prop, read_thrust_table
 from simtools.simctl.launcher import (
     LaunchError,
     find_simcore,
@@ -90,6 +91,21 @@ def model(
         typer.echo(f"wrote {out / 'drone.json'} and {out / 'drone.glb'}")
     if show_report or out is None:
         typer.echo(report(compiled), nl=False)
+
+
+@app.command()
+def propfit(
+    table: Path,
+    kv: Annotated[float, typer.Option("--kv", help="Motor Kv in rpm per volt")],
+    rho_ref: Annotated[float, typer.Option("--rho-ref", help="Reference air density")] = 1.225,
+) -> None:
+    """Fit prop and motor constants from a thrust table CSV and print them as YAML."""
+    try:
+        fit = fit_prop(read_thrust_table(table), kv, rho_ref)
+    except (ThrustTableError, OSError, ValueError) as error:
+        typer.echo(str(error), err=True)
+        raise typer.Exit(code=2) from error
+    typer.echo(as_yaml(fit), nl=False)
 
 
 @app.command()

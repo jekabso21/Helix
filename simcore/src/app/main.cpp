@@ -41,6 +41,8 @@ int run(int argc, char** argv) {
                                  {"dropped_log_rows", summary.dropped_log_rows},
                                  {"render_states_sent", summary.render_states_sent},
                                  {"api_requests", summary.api_requests},
+                                 {"esc_requests", summary.esc_requests},
+                                 {"esc_answered", summary.esc_answered},
                                  {"final_height_m", summary.final_height_m},
                                  {"crashed", summary.crashed}};
   spdlog::info("run finished: {}", report.dump());

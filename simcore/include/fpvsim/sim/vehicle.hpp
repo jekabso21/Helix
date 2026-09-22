@@ -36,6 +36,7 @@ struct VehicleParams {
 struct VehicleState {
   physics::RigidBodyState body;
   std::array<double, physics::kMaxMotors> motor_speed_radps;
+  std::array<double, physics::kMaxMotors> motor_consumed_ah;
   physics::BatteryState battery;
   bool crashed;
 };

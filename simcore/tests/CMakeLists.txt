@@ -16,6 +16,7 @@ fpvsim_add_test(simcore_tests
     api_protocol_test.cpp
     bridge_test.cpp
     config_test.cpp
+    kiss_test.cpp
     mapping_json_test.cpp
     mapping_test.cpp
     vehicle_test.cpp

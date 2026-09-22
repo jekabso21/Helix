@@ -11,7 +11,8 @@ namespace {
 
 const char* kSession = R"({
   "schema_version": 1, "seed": 42, "physics_rate_hz": 2000, "duration_s": 30.0,
-  "betaflight": {"host": "127.0.0.1", "ports": {"pwm": 9002, "fdm": 9003, "rc": 9004}},
+  "betaflight": {"host": "127.0.0.1", "ports": {"pwm": 9002, "fdm": 9003, "rc": 9004},
+                 "esc": {"enabled": true, "request_port": 9005, "uart_port": 5764}},
   "origin": {"lat_rad": 0.977, "lon_rad": 0.419, "altitude_m": 10.0},
   "atmosphere": {"ground_temperature_k": 288.15, "ground_pressure_pa": 101325.0},
   "spawn": {"north_m": 0.0, "east_m": 0.0, "height_agl_m": 0.0, "heading_rad": 0.0},

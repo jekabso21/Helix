@@ -16,6 +16,8 @@ class Ports(Strict):
     pwm: int = 9002
     fdm: int = 9003
     rc: int = 9004
+    esc_request: int = 9005
+    esc_uart: int = 4
     uart_base: int = 5761
 
 
@@ -26,6 +28,7 @@ class BetaflightConfig(Strict):
     cli_extra: list[str] = Field(default_factory=list)
     host: str = "127.0.0.1"
     ports: Ports = Field(default_factory=Ports)
+    virtual_esc: bool = True
 
 
 class OriginConfig(Strict):
