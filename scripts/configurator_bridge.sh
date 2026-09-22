@@ -16,8 +16,8 @@ fi
 
 cat <<EOF
 Bridging ws://127.0.0.1:${ws_port} -> Betaflight SITL UART on TCP ${uart_port}
-Open https://app.betaflight.com, enable manual connection in its options,
-and connect to: ws://127.0.0.1:${ws_port}
+Open https://app.betaflight.com, gear icon > "Enable manual connection mode",
+then port dropdown > "Manual Selection" and connect to: ws://127.0.0.1:${ws_port}
 A SITL UART serves one client at a time. Stop with Ctrl+C.
 EOF
 
