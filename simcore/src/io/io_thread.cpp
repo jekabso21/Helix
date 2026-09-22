@@ -197,7 +197,8 @@ class IoThread::Impl {
       for (Client& client : clients_) {
         for (const Subscription& sub : client.subscriptions) {
           if (tick_ % sub.every_ticks == 0) {
-            const nlohmann::json data = telemetry_json(s, config_.physics_rate_hz, input_source_);
+            const nlohmann::json data =
+                telemetry_json(s, config_.physics_rate_hz, config_.input_source);
             write_to(client, api::event_line("telemetry", s.sim_time_ns, data));
           }
         }
@@ -410,7 +411,6 @@ class IoThread::Impl {
   int listen_fd_;
   std::int64_t render_every_;
   std::int64_t log_every_;
-  std::string input_source_ = "altitude_hold";
   std::vector<Client> clients_;
   std::vector<std::uint32_t> failed_;
   std::optional<sim::Snapshot> latest_;

@@ -9,6 +9,9 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 option(FPVSIM_WERROR "Treat compiler warnings as errors" OFF)
 option(FPVSIM_SANITIZE "Build with AddressSanitizer and UndefinedBehaviorSanitizer" OFF)
 
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(SDL2 REQUIRED IMPORTED_TARGET sdl2)
+
 include(cmake/dependencies.cmake)
 include(cmake/fpvsim_target.cmake)
 

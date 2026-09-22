@@ -1,8 +1,10 @@
 #include <fpvsim/config/session.hpp>
 
 #include <fstream>
+#include <optional>
 #include <sstream>
 #include <stdexcept>
+#include <vector>
 
 #include <nlohmann/json.hpp>
 
@@ -30,6 +32,21 @@ class Reader {
       throw std::runtime_error(path_ + ": missing element " + std::to_string(i));
     }
     return {node_[i], path_ + "[" + std::to_string(i) + "]"};
+  }
+
+  [[nodiscard]] bool has(const std::string& key) const {
+    return node_.is_object() && node_.contains(key);
+  }
+
+  [[nodiscard]] std::vector<std::string> keys() const {
+    if (!node_.is_object()) {
+      throw std::runtime_error(path_ + ": expected an object");
+    }
+    std::vector<std::string> keys;
+    for (const auto& item : node_.items()) {
+      keys.push_back(item.key());
+    }
+    return keys;
   }
 
   [[nodiscard]] std::size_t size() const {
@@ -93,6 +110,36 @@ std::string read_file(const std::filesystem::path& path) {
   return buffer.str();
 }
 
+input::InputMapping parse_mapping(const Reader& node) {
+  input::InputMapping mapping{};
+  mapping.device_name_contains = node.at("device_name_contains").get<std::string>();
+  const Reader channels = node.at("channels");
+  for (const std::string& name : channels.keys()) {
+    const std::optional<std::size_t> index = input::channel_index(name);
+    if (!index) {
+      throw std::runtime_error("mapping.channels: unknown channel '" + name + "'");
+    }
+    const Reader source = channels.at(name);
+    const bool is_axis = source.has("axis");
+    const bool is_button = source.has("button");
+    if (is_axis == is_button) {
+      throw std::runtime_error("mapping.channels." + name + ": exactly one of axis or button");
+    }
+    mapping.channels[*index] = input::ChannelSource{
+        .kind = is_axis ? input::SourceKind::kAxis : input::SourceKind::kButton,
+        .index = source.at(is_axis ? "axis" : "button").get<std::size_t>(),
+        .inverted = source.at("inverted").get<bool>(),
+        .deadband = source.at("deadband").number()};
+  }
+  const std::optional<std::size_t> arm =
+      input::channel_index(node.at("arm_channel").get<std::string>());
+  if (!arm) {
+    throw std::runtime_error("mapping.arm_channel: unknown channel");
+  }
+  mapping.arm_channel = *arm;
+  return mapping;
+}
+
 void check_schema(const Reader& root) {
   const int version = root.at("schema_version").get<int>();
   if (version != kSchemaVersion) {
@@ -138,22 +185,25 @@ SessionConfig parse_session(const std::string& json_text, const std::filesystem:
 
   const Reader input = root.at("input");
   cfg.input.source = input.at("source").get<std::string>();
-  if (cfg.input.source != "altitude_hold") {
-    throw std::runtime_error("input.source must be 'altitude_hold'");
-  }
   cfg.input.rc_rate_hz = input.at("rc_rate_hz").get<std::int64_t>();
   if (cfg.input.rc_rate_hz <= 0 || cfg.physics_rate_hz % cfg.input.rc_rate_hz != 0) {
     throw std::runtime_error("input.rc_rate_hz must divide physics_rate_hz");
   }
-  const Reader hold = input.at("altitude_hold");
-  cfg.input.altitude_hold = {.target_height_m = hold.at("target_height_m").number(),
-                             .climb_rate_mps = hold.at("climb_rate_mps").number(),
-                             .kp_us_per_m = hold.at("kp_us_per_m").number(),
-                             .ki_us_per_m_s = hold.at("ki_us_per_m_s").number(),
-                             .kd_us_per_mps = hold.at("kd_us_per_mps").number(),
-                             .hover_throttle_us = hold.at("hover_throttle_us").number(),
-                             .integral_limit_us = hold.at("integral_limit_us").number(),
-                             .arm_delay_s = hold.at("arm_delay_s").number()};
+  if (cfg.input.source == "altitude_hold") {
+    const Reader hold = input.at("altitude_hold");
+    cfg.input.altitude_hold = {.target_height_m = hold.at("target_height_m").number(),
+                               .climb_rate_mps = hold.at("climb_rate_mps").number(),
+                               .kp_us_per_m = hold.at("kp_us_per_m").number(),
+                               .ki_us_per_m_s = hold.at("ki_us_per_m_s").number(),
+                               .kd_us_per_mps = hold.at("kd_us_per_mps").number(),
+                               .hover_throttle_us = hold.at("hover_throttle_us").number(),
+                               .integral_limit_us = hold.at("integral_limit_us").number(),
+                               .arm_delay_s = hold.at("arm_delay_s").number()};
+  } else if (cfg.input.source == "gamepad") {
+    cfg.input.mapping = parse_mapping(input.at("mapping"));
+  } else {
+    throw std::runtime_error("input.source must be 'altitude_hold' or 'gamepad'");
+  }
 
   const Reader control_api = root.at("control_api");
   cfg.control_api = {.host = control_api.at("host").get<std::string>(),

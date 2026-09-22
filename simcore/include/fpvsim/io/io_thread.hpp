@@ -26,6 +26,7 @@ struct IoConfig {
   std::int64_t state_rate_hz;
   std::int64_t log_rate_hz;
   std::filesystem::path truth_csv;
+  std::string input_source;
   nlohmann::json info;
 };
 

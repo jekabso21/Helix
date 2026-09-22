@@ -86,6 +86,26 @@ TEST(ConfigTest, RejectsPhysicsRateThatIsNotAMultipleOf1000) {
   EXPECT_THROW(config::parse_session(text, "session.json"), std::runtime_error);
 }
 
+TEST(ConfigTest, ParsesAGamepadMappingByChannelName) {
+  std::string text = kSession;
+  const std::size_t start = text.find("\"input\": {");
+  const std::size_t end = text.find("\"control_api\"");
+  text.replace(start, end - start, R"("input": {"source": "gamepad", "rc_rate_hz": 250,
+    "mapping": {"device_name_contains": "Boxer", "arm_channel": "aux1",
+                "channels": {"throttle": {"axis": 0, "inverted": false, "deadband": 0.0},
+                             "aux1": {"button": 0, "inverted": true, "deadband": 0.0}}}},
+  )");
+  const config::SessionConfig cfg = config::parse_session(text, "session.json");
+  EXPECT_EQ(cfg.input.source, "gamepad");
+  EXPECT_EQ(cfg.input.mapping.device_name_contains, "Boxer");
+  EXPECT_EQ(cfg.input.mapping.arm_channel, 4U);
+  ASSERT_TRUE(cfg.input.mapping.channels[2].has_value());
+  EXPECT_EQ(cfg.input.mapping.channels[2]->index, 0U);
+  ASSERT_TRUE(cfg.input.mapping.channels[4].has_value());
+  EXPECT_TRUE(cfg.input.mapping.channels[4]->inverted);
+  EXPECT_FALSE(cfg.input.mapping.channels[0].has_value());
+}
+
 TEST(ConfigTest, ParsesADroneInBetaflightMotorOrder) {
   const fpvsim::sim::VehicleParams drone = config::parse_drone(kDrone, "drone.json");
   EXPECT_EQ(drone.motor_count, 2U);

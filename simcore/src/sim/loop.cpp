@@ -3,11 +3,13 @@
 #include <algorithm>
 #include <chrono>
 #include <cmath>
+#include <memory>
 #include <numbers>
 #include <thread>
 
 #include <fpvsim/bridge/betaflight.hpp>
 #include <fpvsim/env/atmosphere.hpp>
+#include <fpvsim/input/joystick.hpp>
 #include <fpvsim/io/io_thread.hpp>
 #include <fpvsim/pilot/altitude_hold.hpp>
 #include <fpvsim/sim/snapshot.hpp>
@@ -100,6 +102,18 @@ bool apply_commands(io::CommandQueue& commands_in, io::ResultQueue& results_out,
   return running;
 }
 
+// While paused Betaflight keeps getting the frozen state so it neither times out nor loses RC
+void feed_frozen_state(bf::BetaflightLink& link, const bf::FdmInput& last_fdm,
+                       const bf::RcChannels& rc, std::int64_t wall_tick, std::int64_t fdm_every,
+                       std::int64_t rc_every) {
+  if (wall_tick % fdm_every == 0) {
+    link.send_fdm(last_fdm);
+  }
+  if (wall_tick % rc_every == 0) {
+    link.send_rc(last_fdm.sim_time_s, rc);
+  }
+}
+
 }  // namespace
 
 RunSummary run_realtime(const config::SessionConfig& session, const VehicleParams& drone,
@@ -120,6 +134,10 @@ RunSummary run_realtime(const config::SessionConfig& session, const VehicleParam
   Vehicle vehicle(drone, spawn);
   bf::BetaflightLink link(session.betaflight);
   pilot::AltitudeHoldPilot autopilot(session.input.altitude_hold);
+  std::unique_ptr<input::Joystick> joystick;
+  if (session.input.source == "gamepad") {
+    joystick = std::make_unique<input::Joystick>(session.input.mapping.device_name_contains);
+  }
 
   io::SnapshotQueue snapshots;
   io::CommandQueue commands_in;
@@ -132,6 +150,7 @@ RunSummary run_realtime(const config::SessionConfig& session, const VehicleParam
                                .state_rate_hz = session.app.state_rate_hz,
                                .log_rate_hz = session.logging.rate_hz,
                                .truth_csv = session.logging.truth_csv,
+                               .input_source = session.input.source,
                                .info = info},
                   snapshots, commands_in, results_out);
 
@@ -169,8 +188,10 @@ RunSummary run_realtime(const config::SessionConfig& session, const VehicleParam
 
     if (!paused) {
       if (step_index % rc_every == 0) {
-        rc = autopilot.channels(to_seconds(t), height_m, climb_mps, any_motor_running(commands),
-                                static_cast<double>(rc_every) * dt_s);
+        rc = joystick ? input::map_channels(session.input.mapping, joystick->poll())
+                      : autopilot.channels(to_seconds(t), height_m, climb_mps,
+                                           any_motor_running(commands),
+                                           static_cast<double>(rc_every) * dt_s);
         link.send_rc(to_seconds(t), rc);
       }
       const physics::RigidBodyState state_before = before.body;
@@ -190,12 +211,8 @@ RunSummary run_realtime(const config::SessionConfig& session, const VehicleParam
       }
       t += step;
       ++step_index;
-    } else if (wall_tick % fdm_every == 0 && have_fdm) {
-      // Keep Betaflight fed with the frozen state so it neither times out nor loses RC
-      link.send_fdm(last_fdm);
-      if (wall_tick % rc_every == 0) {
-        link.send_rc(to_seconds(t), rc);
-      }
+    } else if (have_fdm) {
+      feed_frozen_state(link, last_fdm, rc, wall_tick, fdm_every, rc_every);
     }
 
     if (!snapshots.try_push(make_snapshot(t, step_index, vehicle, result, commands, rc, paused,

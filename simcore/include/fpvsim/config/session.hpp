@@ -6,6 +6,7 @@
 
 #include <fpvsim/bridge/betaflight.hpp>
 #include <fpvsim/env/atmosphere.hpp>
+#include <fpvsim/input/mapping.hpp>
 #include <fpvsim/pilot/altitude_hold.hpp>
 #include <fpvsim/sim/vehicle.hpp>
 
@@ -25,9 +26,10 @@ struct Spawn {
 };
 
 struct InputConfig {
-  std::string source;  // "altitude_hold" only for now
+  std::string source;  // "altitude_hold" or "gamepad"
   std::int64_t rc_rate_hz;
-  pilot::AltitudeHoldParams altitude_hold;
+  pilot::AltitudeHoldParams altitude_hold;  // only with altitude_hold
+  input::InputMapping mapping;              // only with gamepad
 };
 
 struct ControlApiConfig {
