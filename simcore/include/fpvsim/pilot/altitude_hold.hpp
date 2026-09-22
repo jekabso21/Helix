@@ -25,10 +25,13 @@ class AltitudeHoldPilot {
 
   RcChannels channels(double sim_time_s, double height_m, double climb_rate_mps, bool armed,
                       double dt_s);
+  // Restart the arm sequence from the given time (after a vehicle reset)
+  void reset(double sim_time_s);
   [[nodiscard]] double target_height_m() const { return target_m_; }
 
  private:
   AltitudeHoldParams params_;
+  double start_s_ = 0.0;
   double target_m_ = 0.0;
   double integral_us_ = 0.0;
 };

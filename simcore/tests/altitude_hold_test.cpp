@@ -30,6 +30,18 @@ TEST(AltitudeHoldTest, ArmSwitchGoesHighAfterTheDelayWithThrottleLow) {
   EXPECT_EQ(after[3], 1500);
 }
 
+TEST(AltitudeHoldTest, ResetRestartsTheArmDelayAndTarget) {
+  pilot::AltitudeHoldPilot p(params());
+  for (int i = 0; i < 100; ++i) {
+    p.channels(5.0, 4.0, 0.0, true, 0.01);
+  }
+  EXPECT_GT(p.target_height_m(), 0.5);
+  p.reset(5.0);
+  EXPECT_DOUBLE_EQ(p.target_height_m(), 0.0);
+  EXPECT_EQ(p.channels(5.5, 0.0, 0.0, false, 0.01)[4], 1000);
+  EXPECT_EQ(p.channels(6.5, 0.0, 0.0, false, 0.01)[4], 2000);
+}
+
 TEST(AltitudeHoldTest, ConvergesOnASimpleThrustPlant) {
   // 1D plant: acceleration proportional to throttle above a true hover point of 1400 us
   pilot::AltitudeHoldPilot p(params());

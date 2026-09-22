@@ -14,6 +14,12 @@ constexpr std::size_t kArm = 4;
 
 AltitudeHoldPilot::AltitudeHoldPilot(const AltitudeHoldParams& params) : params_(params) {}
 
+void AltitudeHoldPilot::reset(double sim_time_s) {
+  start_s_ = sim_time_s;
+  target_m_ = 0.0;
+  integral_us_ = 0.0;
+}
+
 RcChannels AltitudeHoldPilot::channels(double sim_time_s, double height_m, double climb_rate_mps,
                                        bool armed, double dt_s) {
   RcChannels channels{};
@@ -21,7 +27,7 @@ RcChannels AltitudeHoldPilot::channels(double sim_time_s, double height_m, doubl
   channels[0] = kCentre;
   channels[1] = kCentre;
   channels[3] = kCentre;
-  channels[kArm] = sim_time_s >= params_.arm_delay_s ? kHigh : kLow;
+  channels[kArm] = sim_time_s - start_s_ >= params_.arm_delay_s ? kHigh : kLow;
   if (!armed) {
     channels[kThrottle] = kLow;
     return channels;
