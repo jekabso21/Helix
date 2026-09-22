@@ -98,7 +98,7 @@ def test_gamepad_session_resolves_the_mapping_by_channel_name() -> None:
     assert mapping["device_name_contains"] == "Radiomaster Boxer"
     assert mapping["arm_channel"] == "aux1"
     assert mapping["channels"]["throttle"] == {"axis": 0, "inverted": False, "deadband": 0.0}
-    assert mapping["channels"]["aux1"] == {"button": 0, "inverted": True, "deadband": 0.0}
+    assert mapping["channels"]["aux1"] == {"button": 0, "inverted": False, "deadband": 0.0}
     assert "altitude_hold" not in resolved.session["input"]
     assert resolved.session["duration_s"] == 0
 

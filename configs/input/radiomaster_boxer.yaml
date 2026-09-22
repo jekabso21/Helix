@@ -1,4 +1,3 @@
-# VERIFY: SDL2 axis and button indices equal the kernel joystick indices used here
 schema_version: 1
 name: radiomaster_boxer
 device:
@@ -8,6 +7,6 @@ channels:
   pitch:    { axis: 2 }
   throttle: { axis: 0 }
   yaw:      { axis: 3 }
-  aux1:     { button: 0, inverted: true }   # arm switch, radio channel 9
+  aux1:     { button: 0 }                   # arm switch, radio channel 9; resting = disarmed
   aux2:     { axis: 4, inverted: true }     # switch SD, radio channel 5
 arm_channel: aux1
