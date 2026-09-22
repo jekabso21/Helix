@@ -9,18 +9,33 @@ script = ExtResource("1")
 
 [node name="Header" type="Label" parent="."]
 layout_mode = 2
+clip_text = true
 text = "Camera feed"
 
-[node name="Container" type="SubViewportContainer" parent="."]
-layout_mode = 2
-size_flags_vertical = 3
-stretch = true
-
-[node name="SubViewport" type="SubViewport" parent="Container"]
+[node name="SubViewport" type="SubViewport" parent="."]
 own_world_3d = false
 handle_input_locally = false
-size = Vector2i(2, 2)
+size = Vector2i(640, 360)
 render_target_update_mode = 4
 
-[node name="Camera3D" type="Camera3D" parent="Container/SubViewport"]
+[node name="Camera3D" type="Camera3D" parent="SubViewport"]
 fov = 110.0
+
+[node name="View" type="TextureRect" parent="."]
+layout_mode = 2
+size_flags_vertical = 3
+expand_mode = 1
+stretch_mode = 5
+
+[node name="OutputRow" type="HBoxContainer" parent="."]
+layout_mode = 2
+
+[node name="RawTcp" type="CheckButton" parent="OutputRow"]
+layout_mode = 2
+text = "raw TCP"
+tooltip_text = "Serve RGB frames on TCP 5700; run the command on the right to view them"
+
+[node name="Command" type="LineEdit" parent="OutputRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+editable = false

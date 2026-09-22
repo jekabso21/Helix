@@ -59,5 +59,5 @@ func _toggle_camera_feed_window() -> void:
 	_camera_feed_window.add_child(panel)
 	add_child(_camera_feed_window)
 	var main_viewport: SubViewport = $Margin/Layout/Body/Center/MainView/SubViewport
-	var feed_viewport: SubViewport = panel.get_node("Container/SubViewport")
+	var feed_viewport: SubViewport = panel.get_node("SubViewport")
 	feed_viewport.world_3d = main_viewport.world_3d
