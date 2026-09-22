@@ -6,4 +6,5 @@ target_link_libraries(fpvsim_common INTERFACE fpvsim::eigen)
 fpvsim_add_test(common_tests
     tests/sim_time_test.cpp
     tests/frames_test.cpp
+    tests/spsc_queue_test.cpp
     LIBS fpvsim::common)
