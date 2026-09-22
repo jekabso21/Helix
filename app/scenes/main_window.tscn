@@ -1,4 +1,4 @@
-[gd_scene load_steps=8 format=3]
+[gd_scene load_steps=9 format=3]
 
 [ext_resource type="Script" path="res://ui/main_window.gd" id="1"]
 [ext_resource type="PackedScene" path="res://ui/placeholder_panel.tscn" id="2"]
@@ -7,6 +7,7 @@
 [ext_resource type="PackedScene" path="res://ui/camera_panel.tscn" id="5"]
 [ext_resource type="PackedScene" path="res://ui/telemetry_panel.tscn" id="6"]
 [ext_resource type="PackedScene" path="res://ui/input_panel.tscn" id="7"]
+[ext_resource type="PackedScene" path="res://ui/drone_panel.tscn" id="8"]
 
 [node name="MainWindow" type="Control"]
 layout_mode = 3
@@ -91,10 +92,9 @@ layout_mode = 2
 [node name="Input" parent="Margin/Layout/Body/LeftDock" instance=ExtResource("7")]
 layout_mode = 2
 
-[node name="Drone" parent="Margin/Layout/Body/LeftDock" instance=ExtResource("2")]
+[node name="Drone" parent="Margin/Layout/Body/LeftDock" instance=ExtResource("8")]
 visible = false
 layout_mode = 2
-title = "Drone: parts, CG preview, apply"
 
 [node name="Environment" parent="Margin/Layout/Body/LeftDock" instance=ExtResource("2")]
 visible = false

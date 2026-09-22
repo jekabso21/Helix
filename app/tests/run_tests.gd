@@ -5,9 +5,10 @@ var failures: int = 0
 var checks: int = 0
 
 
-func _init() -> void:
+func _initialize() -> void:
 	_test_frames()
 	_test_render_state_golden()
+	_test_drone_glb()
 	print("%d checks, %d failures" % [checks, failures])
 	quit(1 if failures > 0 else 0)
 
@@ -62,3 +63,20 @@ func _test_render_state_golden() -> void:
 	check(near(s.godot_position(), Vector3(-2.25, 10.0, -1.5)), "godot position")
 	var truncated := data.slice(0, 100)
 	check(RenderState.decode(truncated) == null, "rejects short input")
+
+
+func _test_drone_glb() -> void:
+	var drone: Variant = load("res://scripts/drone_node.gd").new()
+	var base := ProjectSettings.globalize_path("res://../tests/golden/config/")
+	check(drone.load_model(base + "reference_5in.drone.glb", base + "reference_5in.drone.json"), "golden glb loads")
+	check(drone.part_names().has("battery") and drone.part_names().has("nose_marker"), "parts found: %s" % [drone.part_names()])
+	var nose_body: Vector3 = drone.part_position_body("nose_marker")
+	check(nose_body.z < -0.1 and absf(nose_body.x) < 1e-3, "nose marker is at the Godot body nose (-Z), got %s" % nose_body)
+	check(drone.part_position_body("battery").y > 0.0, "the top-mounted battery sits above the CG")
+	check(drone.part_position_body("motor2").z < 0.0 and drone.part_position_body("motor2").x > 0.0, "motor 2 is front right")
+	check(drone.model.get("motors", []).size() == 4, "compiled json read")
+	var state := RenderState.new()
+	state.motor_rpm = PackedFloat32Array([23873.0, 0.0, 11936.5, 0.0])
+	var f: PackedFloat32Array = drone.thrust_fractions(state)
+	check(absf(f[0] - 1.0) < 1e-3 and f[1] == 0.0 and absf(f[2] - 0.25) < 1e-3, "thrust fractions %s" % [f])
+	drone.queue_free()

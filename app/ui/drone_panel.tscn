@@ -1,0 +1,48 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://ui/drone_panel.gd" id="1"]
+
+[node name="DroneTab" type="ScrollContainer"]
+size_flags_horizontal = 3
+size_flags_vertical = 3
+horizontal_scroll_mode = 0
+
+[node name="DronePanel" type="VBoxContainer" parent="."]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+script = ExtResource("1")
+
+[node name="Summary" type="RichTextLabel" parent="DronePanel"]
+layout_mode = 2
+custom_minimum_size = Vector2(0, 150)
+bbcode_enabled = true
+fit_content = true
+
+[node name="Parts" type="GridContainer" parent="DronePanel"]
+layout_mode = 2
+columns = 5
+
+[node name="Actions" type="HBoxContainer" parent="DronePanel"]
+layout_mode = 2
+
+[node name="Preview" type="Button" parent="DronePanel/Actions"]
+layout_mode = 2
+text = "Preview"
+
+[node name="Apply" type="Button" parent="DronePanel/Actions"]
+layout_mode = 2
+text = "Apply"
+
+[node name="Revert" type="Button" parent="DronePanel/Actions"]
+layout_mode = 2
+text = "Revert"
+
+[node name="Overlays" type="CheckBox" parent="DronePanel/Actions"]
+layout_mode = 2
+button_pressed = true
+text = "overlays"
+
+[node name="Message" type="Label" parent="DronePanel"]
+layout_mode = 2
+autowrap_mode = 3
