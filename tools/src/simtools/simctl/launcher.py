@@ -19,11 +19,15 @@ def find_simcore(base_dir: Path) -> Path:
     override = os.environ.get("FPVSIM_SIMCORE")
     if override:
         return Path(override)
-    for preset in SIMCORE_PRESETS:
-        candidate = base_dir / "build" / preset / "simcore" / "simcore"
-        if candidate.exists():
-            return candidate
-    raise LaunchError("simcore binary not found; build it with cmake --preset release")
+    # newest build wins so a rebuilt dev binary is not shadowed by a stale release one
+    candidates = [
+        c
+        for c in (base_dir / "build" / preset / "simcore" / "simcore" for preset in SIMCORE_PRESETS)
+        if c.exists()
+    ]
+    if not candidates:
+        raise LaunchError("simcore binary not found; build it with cmake --preset release")
+    return max(candidates, key=lambda c: c.stat().st_mtime)
 
 
 def _terminate(process: subprocess.Popen[bytes], timeout_s: float = 5.0) -> None:

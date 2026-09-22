@@ -75,7 +75,7 @@ func _render_summary(result: Dictionary, method: String) -> void:
 		float(result["mass_kg"]) * 1000.0, float(result.get("generated_mass_kg", 0.0)) * 1000.0
 	])
 	lines.append("CG from origin  x %+.1f  y %+.1f  z %+.1f mm" % [cg[0] * 1000.0, cg[1] * 1000.0, cg[2] * 1000.0])
-	lines.append("inertia  Ixx %.2e  Iyy %.2e  Izz %.2e kg m2" % [inertia[0][0], inertia[1][1], inertia[2][2]])
+	lines.append("inertia  Ixx %.3f  Iyy %.3f  Izz %.3f  x1e-3 kg m2" % [inertia[0][0] * 1e3, inertia[1][1] * 1e3, inertia[2][2] * 1e3])
 	lines.append("[b]Static hover[/b]")
 	for h: Dictionary in result.get("hover", []):
 		lines.append("  motor %d  %.3f N  %4.1f%%" % [int(h["bf_index"]), float(h["thrust_n"]), 100.0 * float(h["fraction"])])
