@@ -46,7 +46,8 @@ enum class CommandType : std::uint8_t {
   kResume,
   kShutdown,
   kSetInputMapping,
-  kSelectInputDevice
+  kSelectInputDevice,
+  kReloadModel
 };
 
 struct Command {

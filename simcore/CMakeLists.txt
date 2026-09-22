@@ -25,6 +25,7 @@ add_library(fpvsim_simcore STATIC
     src/net/udp_socket.cpp
     src/pilot/altitude_hold.cpp
     src/sim/loop.cpp
+    src/sim/model_control.cpp
     src/sim/vehicle.cpp)
 add_library(fpvsim::simcore ALIAS fpvsim_simcore)
 target_include_directories(fpvsim_simcore PUBLIC include src)

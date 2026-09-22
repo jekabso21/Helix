@@ -20,6 +20,7 @@
 #include <Eigen/Geometry>
 
 #include <fpvsim/api/protocol.hpp>
+#include <fpvsim/config/session.hpp>
 #include <fpvsim/frames.hpp>
 #include <fpvsim/input/mapping_json.hpp>
 #include <fpvsim/log/csv_log.hpp>
@@ -153,9 +154,10 @@ proto::RenderState render_state_from(const sim::Snapshot& s) {
 
 class IoThread::Impl {
  public:
-  Impl(input::InputControl& input_control, IoConfig config, SnapshotQueue& snapshots,
-       CommandQueue& commands, ResultQueue& results)
+  Impl(input::InputControl& input_control, sim::ModelControl& model_control, IoConfig config,
+       SnapshotQueue& snapshots, CommandQueue& commands, ResultQueue& results)
       : input_control_(input_control),
+        model_control_(model_control),
         config_(std::move(config)),
         snapshots_(snapshots),
         commands_(commands),
@@ -346,6 +348,9 @@ class IoThread::Impl {
       case api::Method::kSelectInputDevice:
         select_input_device(client, request);
         break;
+      case api::Method::kReloadModel:
+        reload_model(client, request);
+        break;
     }
   }
 
@@ -390,6 +395,21 @@ class IoThread::Impl {
       return;
     }
     queue_command(client, request.id, sim::CommandType::kSetInputMapping);
+  }
+
+  void reload_model(Client& client, const api::Request& request) {
+    const auto& params = request.params;
+    if (!params.contains("path") || !params["path"].is_string()) {
+      write_to(client, api::error_response(request.id, "invalid_params", "missing path"));
+      return;
+    }
+    try {
+      model_control_.request(config::load_drone(params["path"].get<std::string>()));
+    } catch (const std::exception& error) {
+      write_to(client, api::error_response(request.id, "invalid_params", error.what()));
+      return;
+    }
+    queue_command(client, request.id, sim::CommandType::kReloadModel);
   }
 
   void select_input_device(Client& client, const api::Request& request) {
@@ -470,6 +490,7 @@ class IoThread::Impl {
   }
 
   input::InputControl& input_control_;
+  sim::ModelControl& model_control_;
   IoConfig config_;
   SnapshotQueue& snapshots_;
   CommandQueue& commands_;
@@ -490,9 +511,11 @@ class IoThread::Impl {
   IoStats stats_;
 };
 
-IoThread::IoThread(input::InputControl& input_control, IoConfig config, SnapshotQueue& snapshots,
-                   CommandQueue& commands, ResultQueue& results)
-    : impl_(std::make_unique<Impl>(input_control, std::move(config), snapshots, commands, results)),
+IoThread::IoThread(input::InputControl& input_control, sim::ModelControl& model_control,
+                   IoConfig config, SnapshotQueue& snapshots, CommandQueue& commands,
+                   ResultQueue& results)
+    : impl_(std::make_unique<Impl>(input_control, model_control, std::move(config), snapshots,
+                                   commands, results)),
       thread_([this](const std::stop_token& stop) { impl_->run(stop); }) {}
 
 IoThread::~IoThread() {

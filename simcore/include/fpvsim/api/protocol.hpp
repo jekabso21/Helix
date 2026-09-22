@@ -23,6 +23,7 @@ enum class Method : std::uint8_t {
   kGetInput,
   kSetInputMapping,
   kSelectInputDevice,
+  kReloadModel,
 };
 
 struct Request {

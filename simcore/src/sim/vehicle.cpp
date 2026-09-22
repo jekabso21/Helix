@@ -17,6 +17,11 @@ void Vehicle::reset(const physics::RigidBodyState& spawn) {
   state_ = VehicleState{.body = spawn, .motor_speed_radps = {}, .crashed = false};
 }
 
+void Vehicle::reload(const VehicleParams& params, const physics::RigidBodyState& spawn) {
+  params_ = params;
+  reset(spawn);
+}
+
 double Vehicle::hover_command() const {
   const double thrust_per_motor =
       params_.mass.mass_kg * kStandardGravityMps2 / static_cast<double>(params_.motor_count);

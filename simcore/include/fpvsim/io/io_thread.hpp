@@ -9,6 +9,7 @@
 #include <nlohmann/json.hpp>
 
 #include <fpvsim/input/control.hpp>
+#include <fpvsim/sim/model_control.hpp>
 #include <fpvsim/sim/snapshot.hpp>
 #include <fpvsim/spsc_queue.hpp>
 
@@ -41,8 +42,8 @@ struct IoStats {
 // Everything that is not the physics loop: RenderState, truth log, control API, telemetry
 class IoThread {
  public:
-  IoThread(input::InputControl& input_control, IoConfig config, SnapshotQueue& snapshots,
-           CommandQueue& commands, ResultQueue& results);
+  IoThread(input::InputControl& input_control, sim::ModelControl& model_control, IoConfig config,
+           SnapshotQueue& snapshots, CommandQueue& commands, ResultQueue& results);
   ~IoThread();
   IoThread(const IoThread&) = delete;
   IoThread& operator=(const IoThread&) = delete;

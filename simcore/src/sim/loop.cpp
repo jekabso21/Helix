@@ -15,6 +15,7 @@
 #include <fpvsim/input/joystick.hpp>
 #include <fpvsim/io/io_thread.hpp>
 #include <fpvsim/pilot/altitude_hold.hpp>
+#include <fpvsim/sim/model_control.hpp>
 #include <fpvsim/sim/snapshot.hpp>
 #include <fpvsim/sim/step_stats.hpp>
 #include <fpvsim/sim/vehicle.hpp>
@@ -89,13 +90,14 @@ Snapshot make_snapshot(SimTime t, std::int64_t step_index, const Vehicle& vehicl
 
 // Applies queued control API commands at the start of a step; returns false on shutdown
 bool apply_commands(io::CommandQueue& commands_in, io::ResultQueue& results_out, SimTime t,
-                    Vehicle& vehicle, const physics::RigidBodyState& spawn,
-                    pilot::AltitudeHoldPilot& autopilot, bf::MotorCommands& commands,
-                    MotorCommandArray& motor_commands, bool& paused,
-                    input::InputControl& input_control, input::JoystickManager* joystick,
-                    input::InputMapping& mapping) {
+                    Vehicle& vehicle, physics::RigidBodyState& spawn,
+                    const config::Spawn& spawn_cfg, pilot::AltitudeHoldPilot& autopilot,
+                    bf::MotorCommands& commands, MotorCommandArray& motor_commands, bool& paused,
+                    input::InputControl& input_control, ModelControl& model_control,
+                    input::JoystickManager* joystick, input::InputMapping& mapping) {
   bool running = true;
   Command command{};
+  VehicleParams reloaded{};
   while (commands_in.try_pop(command)) {
     switch (command.type) {
       case CommandType::kReset:
@@ -124,6 +126,16 @@ bool apply_commands(io::CommandQueue& commands_in, io::ResultQueue& results_out,
         }
         break;
       }
+      case CommandType::kReloadModel:
+        if (model_control.take(reloaded)) {
+          spawn = spawn_state(reloaded, spawn_cfg.north_m, spawn_cfg.east_m, spawn_cfg.height_agl_m,
+                              spawn_cfg.heading_rad);
+          vehicle.reload(reloaded, spawn);
+          autopilot.reset(to_seconds(t));
+          commands = {};
+          motor_commands = {};
+        }
+        break;
     }
     if (joystick != nullptr) {
       input_control.publish_status(
@@ -177,7 +189,7 @@ RunSummary run_realtime(const config::SessionConfig& session, const VehicleParam
                 std::llround(session.duration_s * static_cast<double>(session.physics_rate_hz)))
           : -1;
 
-  const physics::RigidBodyState spawn =
+  physics::RigidBodyState spawn =
       spawn_state(drone, session.spawn.north_m, session.spawn.east_m, session.spawn.height_agl_m,
                   session.spawn.heading_rad);
   Vehicle vehicle(drone, spawn);
@@ -187,6 +199,7 @@ RunSummary run_realtime(const config::SessionConfig& session, const VehicleParam
   input::InputMapping mapping = session.input.mapping;
   std::unique_ptr<input::JoystickManager> joystick;
   input::InputControl input_control;
+  ModelControl model_control;
   if (use_joystick) {
     joystick = std::make_unique<input::JoystickManager>();
     joystick->open(mapping.device_name_contains);
@@ -200,7 +213,7 @@ RunSummary run_realtime(const config::SessionConfig& session, const VehicleParam
   io::SnapshotQueue snapshots;
   io::CommandQueue commands_in;
   io::ResultQueue results_out;
-  io::IoThread io(input_control,
+  io::IoThread io(input_control, model_control,
                   io::IoConfig{.api_host = session.control_api.host,
                                .api_port = session.control_api.port,
                                .app_host = session.app.host,
@@ -235,8 +248,9 @@ RunSummary run_realtime(const config::SessionConfig& session, const VehicleParam
          (total_steps < 0 || step_index < total_steps)) {
     const auto step_begin = std::chrono::steady_clock::now();
 
-    running = apply_commands(commands_in, results_out, t, vehicle, spawn, autopilot, commands,
-                             motor_commands, paused, input_control, joystick.get(), mapping);
+    running = apply_commands(commands_in, results_out, t, vehicle, spawn, session.spawn, autopilot,
+                             commands, motor_commands, paused, input_control, model_control,
+                             joystick.get(), mapping);
 
     link.poll_motors(commands);
     for (std::size_t i = 0; i < bf::kMotorCount; ++i) {

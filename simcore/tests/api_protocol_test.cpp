@@ -17,6 +17,13 @@ TEST(ApiProtocolTest, ParsesARequestWithParams) {
   EXPECT_EQ(request.params.at("rate_hz").get<int>(), 30);
 }
 
+TEST(ApiProtocolTest, KnowsReloadModel) {
+  const auto parsed =
+      api::parse_request(R"({"id": 7, "method": "reload_model", "params": {"path": "x"}})");
+  ASSERT_TRUE(std::holds_alternative<api::Request>(parsed));
+  EXPECT_EQ(std::get<api::Request>(parsed).method, api::Method::kReloadModel);
+}
+
 TEST(ApiProtocolTest, MissingParamsDefaultsToEmptyObject) {
   const auto parsed = api::parse_request(R"({"id": 1, "method": "ping"})");
   ASSERT_TRUE(std::holds_alternative<api::Request>(parsed));

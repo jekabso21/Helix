@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 
+#include <cmath>
 #include <numbers>
 
 #include <fpvsim/constants.hpp>
@@ -88,4 +89,47 @@ TEST(VehicleTest, HeadingIsAppliedAtSpawn) {
   EXPECT_NEAR(nose.y(), 1.0, 1e-9);
   EXPECT_DOUBLE_EQ(state.position_ned.x(), 1.0);
   EXPECT_DOUBLE_EQ(state.position_ned.y(), 2.0);
+}
+
+TEST(VehicleTest, ReloadSwapsTheModelAndResetsToSpawn) {
+  const sim::VehicleParams params = quad_params();
+  sim::Vehicle vehicle(params, sim::spawn_state(params, 0.0, 0.0, 5.0, 0.0));
+  sim::MotorCommandArray full{};
+  full.fill(1.0);
+  for (int i = 0; i < 200; ++i) {
+    vehicle.step(full, kRho, 0.001);
+  }
+  sim::VehicleParams heavier = params;
+  heavier.mass =
+      fpvsim::physics::make_mass_properties(2.0 * quad::kMassKg, params.mass.inertia_frd);
+  const auto spawn = sim::spawn_state(heavier, 1.0, 2.0, 0.0, 0.0);
+  vehicle.reload(heavier, spawn);
+  EXPECT_DOUBLE_EQ(vehicle.params().mass.mass_kg, 2.0 * quad::kMassKg);
+  EXPECT_NEAR(vehicle.state().body.position_ned.x(), 1.0, 1e-12);
+  EXPECT_DOUBLE_EQ(vehicle.state().motor_speed_radps[0], 0.0);
+  EXPECT_NEAR(vehicle.hover_command(), std::sqrt(2.0) * sim::Vehicle(params, spawn).hover_command(),
+              1e-9);
+}
+
+// A CG ahead of the motor centre with equal thrust everywhere pitches the nose up (FRD -y torque)
+TEST(VehicleTest, EqualThrustWithAForwardCgPitchesNoseUpByTheMomentBalance) {
+  sim::VehicleParams params = quad_params();
+  const double shift = 0.010;  // CG 10 mm ahead: every motor moves 10 mm aft relative to it
+  for (std::size_t i = 0; i < quad::kMotorCount; ++i) {
+    params.mounts[i].position_frd.x() -= shift;
+  }
+  sim::Vehicle vehicle(params, sim::spawn_state(params, 0.0, 0.0, 5.0, 0.0));
+  sim::MotorCommandArray half{};
+  half.fill(0.5);
+  // first step: the body has no angular rate yet, so no damping or gyroscopic terms
+  const sim::StepResult result = vehicle.step(half, kRho, 0.001);
+  double total_thrust = 0.0;
+  for (std::size_t i = 0; i < quad::kMotorCount; ++i) {
+    total_thrust += result.motors[i].thrust_n;
+  }
+  // moment about y of the four upward thrusts at x = -shift: sum(r x F)_y = -shift * T_total
+  const double expected_pitch_accel = -shift * total_thrust / params.mass.inertia_frd(1, 1);
+  EXPECT_LT(expected_pitch_accel, 0.0);
+  EXPECT_NEAR(result.rates.angular_acceleration_frd.y(), expected_pitch_accel,
+              1e-6 * std::abs(expected_pitch_accel));
 }

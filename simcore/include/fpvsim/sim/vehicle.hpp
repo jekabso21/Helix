@@ -46,6 +46,8 @@ class Vehicle {
 
   StepResult step(const MotorCommandArray& commands, double air_density_kg_m3, double dt_s);
   void reset(const physics::RigidBodyState& spawn);
+  // Swaps the model and resets to spawn; params are copied, no heap involved
+  void reload(const VehicleParams& params, const physics::RigidBodyState& spawn);
 
   [[nodiscard]] const VehicleParams& params() const { return params_; }
   [[nodiscard]] const VehicleState& state() const { return state_; }
