@@ -6,9 +6,10 @@ import time
 from pathlib import Path
 
 import pytest
+import yaml
 
 from simtools.api import ControlClient
-from simtools.config import resolve_session, write_run_directory
+from simtools.config import load_yaml, resolve_session, write_run_directory
 from simtools.proto import MESSAGE_SIZE, decode_render_state
 from simtools.simctl.launcher import find_simcore, run_headless
 from simtools.sitl import sitl_port_busy
@@ -132,3 +133,45 @@ def test_altitude_hold_keeps_height_within_half_a_metre(tmp_path: Path) -> None:
     assert all(r["crashed"] == "0" for r in rows)
     assert max(abs(h - TARGET_HEIGHT_M) for h in heights) <= 0.5, (min(heights), max(heights))
     assert max(tilts) <= 5.0, max(tilts)
+
+
+@pytest.mark.skipif(not SITL_BINARY.exists(), reason="Betaflight SITL not built")
+@pytest.mark.skipif(
+    not any(
+        (REPO_ROOT / "build" / p / "simcore/simcore").exists()
+        for p in ("release", "ci", "clang", "dev")
+    ),
+    reason="simcore not built",
+)
+def test_hover_motor_outputs_follow_the_moment_balance_after_a_battery_shift(
+    tmp_path: Path,
+) -> None:
+    if sitl_port_busy():
+        pytest.skip("a Betaflight SITL is already running on TCP 5761")
+    drone = load_yaml(REPO_ROOT / "configs/drones/reference_5in.yaml")
+    drone["parts"]["battery"]["pos_mm"][0] += 20.0
+    (tmp_path / "drone.yaml").write_text(yaml.safe_dump(drone))
+    session = load_yaml(REPO_ROOT / "configs/sessions/ci_hover.yaml")
+    session["name"] = "ci_hover_shifted"
+    session["drone"] = str(tmp_path / "drone.yaml")
+    (tmp_path / "session.yaml").write_text(yaml.safe_dump(session))
+    resolved = resolve_session(tmp_path / "session.yaml", REPO_ROOT)
+    run_dir = write_run_directory(resolved, tmp_path, REPO_ROOT, ["pytest"])
+    result = run_headless(resolved, run_dir, find_simcore(REPO_ROOT))
+    assert result.exit_code == 0, (run_dir / "logs/simcore.log").read_text()
+
+    with (run_dir / "data/truth.csv").open() as f:
+        rows = [r for r in csv.DictReader(f) if float(r["t_s"]) >= WINDOW_START_S]
+    assert rows and all(r["crashed"] == "0" for r in rows)
+    mean = {k: sum(float(r[k]) for r in rows) / len(rows) for k in ("m1", "m2", "m3", "m4")}
+    front, rear = (mean["m2"] + mean["m4"]) / 2.0, (mean["m1"] + mean["m3"]) / 2.0
+    # steady thrust goes with command squared; static balance about the shifted CG:
+    # T_front (a - d) = T_rear (a + d) with a the arm half-length and d the forward CG shift
+    motors = resolved.drone["motors"]
+    a = (motors[1]["position_frd_m"][0] - motors[0]["position_frd_m"][0]) / 2.0
+    d = resolved.drone["cg_from_origin_frd_m"][0]
+    predicted = (a + d) / (a - d) - 1.0
+    measured = (front / rear) ** 2 - 1.0
+    assert d > 0.005
+    assert measured > 0.0, (front, rear)
+    assert abs(measured - predicted) <= 0.1 * predicted, (measured, predicted)
