@@ -38,6 +38,11 @@ StepResult Vehicle::step(const MotorCommandArray& commands, double air_density_k
   const Eigen::Vector3d air_velocity_frd = body.q_ned_from_frd.conjugate() * body.velocity_ned;
   const physics::AeroLoads aero =
       physics::aero_loads(params_.aero, air_density_kg_m3, air_velocity_frd, body.angular_rate_frd);
+  const physics::Loads rotor_drag =
+      physics::rotor_drag_loads(params_.mounts, params_.motors, result.motors, params_.motor_count,
+                                air_velocity_frd, body.angular_rate_frd);
+  loads.force_frd += rotor_drag.force_frd;
+  loads.torque_frd += rotor_drag.torque_frd;
   const physics::ContactLoads contact = physics::contact_loads(params_.contact, body, 0.0);
   loads.force_frd += aero.force_frd;
   loads.torque_frd += aero.torque_frd + contact.torque_frd;

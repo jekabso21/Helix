@@ -32,10 +32,10 @@ const char* kDrone = R"({
   "motors": [
     {"bf_index": 1, "position_frd_m": [-0.08, 0.08, 0], "axis_frd": [0, 0, -1], "spin": 1,
      "rotor_inertia_kg_m2": 6e-6,
-     "first_order": {"max_speed_radps": 2500, "time_constant_s": 0.03, "k_t": 1.5e-6, "k_q": 2e-8}},
+     "first_order": {"max_speed_radps": 2500, "time_constant_s": 0.03, "k_t": 1.5e-6, "k_q": 2e-8, "k_h": 6e-5}},
     {"bf_index": 2, "position_frd_m": [0.08, 0.08, 0], "axis_frd": [0, 0, -1], "spin": -1,
      "rotor_inertia_kg_m2": 6e-6,
-     "first_order": {"max_speed_radps": 2500, "time_constant_s": 0.03, "k_t": 1.5e-6, "k_q": 2e-8}}
+     "first_order": {"max_speed_radps": 2500, "time_constant_s": 0.03, "k_t": 1.5e-6, "k_q": 2e-8, "k_h": 6e-5}}
   ],
   "imu": {"position_frd_m": [0, 0, 0]},
   "aero": {"cda_frd_m2": [0.01, 0.01, 0.02], "cop_frd_m": [0, 0, 0], "k_omega": [5e-4, 5e-4, 5e-4]},

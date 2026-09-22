@@ -81,6 +81,30 @@ TEST(PropulsionTest, BetaflightCorrectionsOpposeTheDisturbance) {
   }
 }
 
+TEST(PropulsionTest, RotorDragOpposesInPlaneAirspeedOnly) {
+  const auto outputs = steady_outputs({1000.0, 1000.0, 1000.0, 1000.0});
+  const physics::Loads sideways = physics::rotor_drag_loads(
+      quad::quad_mounts(), quad::quad_motors(), outputs, quad::kMotorCount,
+      Eigen::Vector3d(10.0, 0.0, 0.0), Eigen::Vector3d::Zero());
+  EXPECT_NEAR(sideways.force_frd.x(), -4.0 * 6.0e-5 * 1000.0 * 10.0, 1e-12);
+  EXPECT_NEAR(sideways.force_frd.y(), 0.0, 1e-12);
+  EXPECT_NEAR(sideways.force_frd.z(), 0.0, 1e-12);
+  EXPECT_LT(sideways.torque_frd.norm(), 1e-12);
+  const physics::Loads axial = physics::rotor_drag_loads(
+      quad::quad_mounts(), quad::quad_motors(), outputs, quad::kMotorCount,
+      Eigen::Vector3d(0.0, 0.0, -10.0), Eigen::Vector3d::Zero());
+  EXPECT_LT(axial.force_frd.norm(), 1e-12);
+}
+
+TEST(PropulsionTest, RotorDragDampsBodyRates) {
+  const auto outputs = steady_outputs({1000.0, 1000.0, 1000.0, 1000.0});
+  const physics::Loads spinning = physics::rotor_drag_loads(
+      quad::quad_mounts(), quad::quad_motors(), outputs, quad::kMotorCount, Eigen::Vector3d::Zero(),
+      Eigen::Vector3d(0.0, 0.0, 5.0));
+  EXPECT_LT(spinning.torque_frd.z(), 0.0);
+  EXPECT_LT(spinning.force_frd.norm(), 1e-12);
+}
+
 TEST(PropulsionTest, ClockwiseRotorMomentumPointsDown) {
   const physics::Loads loads =
       physics::propulsion_loads(quad::quad_mounts(), quad::quad_motors(),

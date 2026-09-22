@@ -8,6 +8,7 @@ struct MotorParams {
   double thrust_coefficient;  // N per (rad/s)^2
   double torque_coefficient;  // N m per (rad/s)^2
   double rotor_inertia_kg_m2;
+  double rotor_drag_coefficient;  // N per (rad/s) per (m/s) of in-plane airspeed
 };
 
 struct MotorOutput {

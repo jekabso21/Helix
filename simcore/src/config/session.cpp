@@ -227,7 +227,8 @@ sim::VehicleParams parse_drone(const std::string& json_text, const std::filesyst
                         .time_constant_s = fo.at("time_constant_s").number(),
                         .thrust_coefficient = fo.at("k_t").number(),
                         .torque_coefficient = fo.at("k_q").number(),
-                        .rotor_inertia_kg_m2 = motor.at("rotor_inertia_kg_m2").number()};
+                        .rotor_inertia_kg_m2 = motor.at("rotor_inertia_kg_m2").number(),
+                        .rotor_drag_coefficient = fo.at("k_h").number()};
   }
 
   const Reader aero = root.at("aero");

@@ -23,7 +23,8 @@ inline physics::MotorParams quad_motor() {
                               .time_constant_s = 0.03,
                               .thrust_coefficient = 1.5e-6,
                               .torque_coefficient = 2.0e-8,
-                              .rotor_inertia_kg_m2 = 6.0e-6};
+                              .rotor_inertia_kg_m2 = 6.0e-6,
+                              .rotor_drag_coefficient = 6.0e-5};
 }
 
 // Betaflight quad X: 1 rear right CW, 2 front right CCW, 3 rear left CCW, 4 front left CW
