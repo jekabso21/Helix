@@ -165,6 +165,7 @@ class FirstOrderMotorConfig(Strict):
     time_constant_s: float
     k_t: float
     k_q: float
+    k_h: float = 0.0
     rotor_inertia_kg_m2: float
 
 

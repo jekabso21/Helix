@@ -104,6 +104,7 @@ def _quad_x_motors(drone: DroneConfig) -> list[dict[str, Any]]:
                 "time_constant_s": motor.time_constant_s,
                 "k_t": motor.k_t,
                 "k_q": motor.k_q,
+                "k_h": motor.k_h,
             },
         }
         for index, (x, y, spin) in enumerate(corners)

@@ -2,7 +2,7 @@
 schema_version: 1
 name: reference_5in
 mass_g: 500
-inertia_frd_kg_m2: [[0.003, 0, 0], [0, 0.003, 0], [0, 0, 0.005]]
+inertia_frd_kg_m2: [[0.0015, 0, 0], [0, 0.0015, 0], [0, 0, 0.0028]]
 layout:
   type: quad_x
   motor_spacing_mm: 226
@@ -10,9 +10,10 @@ layout:
 motor:
   model: first_order
   max_rpm: 23873
-  time_constant_s: 0.03
+  time_constant_s: 0.02
   k_t: 1.5e-6
   k_q: 2.0e-8
+  k_h: 6.0e-5
   rotor_inertia_kg_m2: 6.0e-6
 imu:
   offset_mm: [0, 0, 0]
