@@ -11,6 +11,7 @@ from simtools.simctl.launcher import (
     install_signal_handlers,
     run_headless,
 )
+from simtools.simctl.serve import serve_forever
 
 app = typer.Typer(add_completion=False, no_args_is_help=True, help="fpvsim launcher")
 
@@ -58,6 +59,16 @@ def run(
         raise typer.Exit(code=2) from error
     typer.echo(f"simcore exit code {result.exit_code}; logs in {result.run_dir / 'logs'}")
     raise typer.Exit(code=result.exit_code)
+
+
+@app.command()
+def serve(
+    base_dir: BaseDirOption = Path(),
+    port: Annotated[int, typer.Option("--port", help="TCP port of the backend API")] = 7740,
+) -> None:
+    """Run the backend API the app connects to (sessions, start, stop, status, logs)."""
+    install_signal_handlers()
+    serve_forever(base_dir.resolve(), port=port)
 
 
 def main() -> None:
