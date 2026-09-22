@@ -31,6 +31,7 @@ text = "Refresh"
 [node name="DeviceStatus" type="Label" parent="InputPanel"]
 layout_mode = 2
 autowrap_mode = 3
+custom_minimum_size = Vector2(0, 0)
 text = "(no device)"
 
 [node name="ChannelsTitle" type="Label" parent="InputPanel"]
@@ -49,6 +50,7 @@ layout_mode = 2
 
 [node name="MappingTitle" type="Label" parent="InputPanel"]
 layout_mode = 2
+autowrap_mode = 3
 text = "Mapping: press Bind, then move the control in its positive direction (changes apply live)"
 
 [node name="Mapping" type="GridContainer" parent="InputPanel"]

@@ -116,6 +116,8 @@ func _build_table() -> void:
 	for i in CHANNELS.size():
 		var name := Label.new()
 		name.text = CHANNEL_LABELS[i]
+		name.clip_text = true
+		name.custom_minimum_size = Vector2(120, 0)
 		_table.add_child(name)
 		var bind := Button.new()
 		bind.text = "Bind"
@@ -211,7 +213,7 @@ func _fill_source_options(axes: int, buttons: int) -> void:
 			option.add_item("axis %d" % a)
 		for b in buttons:
 			option.add_item("button %d" % b)
-		option.selected = mini(previous, option.item_count - 1)
+		option.selected = clampi(previous, 0, option.item_count - 1)
 
 
 func _refresh() -> void:
