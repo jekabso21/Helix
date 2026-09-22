@@ -10,24 +10,26 @@ from pathlib import Path
 from spin_motors import (
     FDM_RATE_HZ,
     FDM_STRUCT,
-    HOST,
     ORIGIN_LON_LAT_ALT,
-    PORT_FDM,
-    PORT_PWM,
-    PORT_RC,
-    PORT_UART3,
     RC_STRUCT,
     REPO_ROOT,
     SEA_LEVEL_PRESSURE_PA,
     SERVO_STRUCT,
     STANDARD_GRAVITY_MPS2,
     StateSender,
+)
+
+from simtools.msp import MspCommand, parse_status_ex
+from simtools.sitl import (
+    HOST,
+    PORT_FDM,
+    PORT_PWM,
+    PORT_RC,
+    PORT_UART3,
     apply_cli_config,
     connect_uart,
     start_sitl,
 )
-
-from simtools.msp import MspCommand, parse_status_ex
 
 RC_EVERY_STEPS = 20
 RESPONSE_TIMEOUT_S = 0.05

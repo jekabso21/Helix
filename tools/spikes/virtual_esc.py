@@ -5,18 +5,11 @@ import tempfile
 import time
 from pathlib import Path
 
-from spin_motors import (
-    HOST,
-    PORT_UART3,
-    REPO_ROOT,
-    StateSender,
-    apply_cli_config,
-    connect_uart,
-    start_sitl,
-)
+from spin_motors import REPO_ROOT, StateSender
 
 from simtools.esc import KissTelemetry, encode_kiss_frame
 from simtools.msp import MspCommand, parse_analog, parse_motor_telemetry
+from simtools.sitl import HOST, PORT_UART3, apply_cli_config, connect_uart, start_sitl
 
 PORT_ESC_REQUEST = 9005  # Betaflight -> virtual ESC, one byte: motor index
 PORT_UART4 = 5764  # ESC sensor UART

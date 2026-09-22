@@ -10,16 +10,10 @@ from pathlib import Path
 from typing import Any
 
 import yaml
-from spin_motors import (
-    PORT_UART3,
-    REPO_ROOT,
-    StateSender,
-    apply_cli_config,
-    connect_uart,
-    start_sitl,
-)
+from spin_motors import REPO_ROOT, StateSender
 
 from simtools.msp import MspCommand, parse_motor, parse_rc, parse_status_ex
+from simtools.sitl import PORT_UART3, apply_cli_config, connect_uart, start_sitl
 
 JSIOCGNAME_128 = 0x80806A13
 JS_EVENT_BUTTON = 0x01

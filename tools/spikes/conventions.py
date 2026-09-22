@@ -5,15 +5,7 @@ import tempfile
 import time
 from pathlib import Path
 
-from spin_motors import (
-    PORT_UART3,
-    REPO_ROOT,
-    STANDARD_GRAVITY_MPS2,
-    StateSender,
-    apply_cli_config,
-    connect_uart,
-    start_sitl,
-)
+from spin_motors import REPO_ROOT, STANDARD_GRAVITY_MPS2, StateSender
 
 from simtools.msp import (
     MspClient,
@@ -23,6 +15,7 @@ from simtools.msp import (
     parse_raw_imu,
     parse_status_ex,
 )
+from simtools.sitl import PORT_UART3, apply_cli_config, connect_uart, start_sitl
 
 AXES = ("roll", "pitch", "yaw")
 RAMP_RATE_DEG_S = 20.0
