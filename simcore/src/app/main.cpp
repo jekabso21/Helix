@@ -4,7 +4,10 @@
 
 #include <spdlog/spdlog.h>
 #include <CLI/CLI.hpp>
+#include <nlohmann/json.hpp>
 
+#include <fpvsim/config/session.hpp>
+#include <fpvsim/sim/loop.hpp>
 #include <fpvsim/version.hpp>
 
 namespace {
@@ -19,9 +22,21 @@ int run(int argc, char** argv) {
 
   CLI11_PARSE(cli, argc, argv);
 
-  spdlog::error("simcore {} has no simulation loop yet (session: {})", fpvsim::kVersion,
-                session_path);
-  return EXIT_FAILURE;
+  const fpvsim::config::SessionConfig session = fpvsim::config::load_session(session_path);
+  const fpvsim::sim::VehicleParams drone = fpvsim::config::load_drone(session.drone_json);
+  spdlog::info("simcore {} starting: {} Hz physics, {} s, Betaflight at {}", fpvsim::kVersion,
+               session.physics_rate_hz, session.duration_s, session.betaflight.host);
+
+  const fpvsim::sim::RunSummary summary = fpvsim::sim::run_realtime(session, drone);
+  const nlohmann::json report = {{"steps", summary.steps},
+                                 {"overruns", summary.overruns},
+                                 {"motor_packets", summary.motor_packets},
+                                 {"malformed_packets", summary.malformed_packets},
+                                 {"dropped_log_rows", summary.dropped_log_rows},
+                                 {"final_height_m", summary.final_height_m},
+                                 {"crashed", summary.crashed}};
+  spdlog::info("run finished: {}", report.dump());
+  return EXIT_SUCCESS;
 }
 
 }  // namespace

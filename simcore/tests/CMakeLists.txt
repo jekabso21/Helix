@@ -8,6 +8,13 @@ fpvsim_add_test(simcore_model_tests
     rigid_body_test.cpp
     LIBS fpvsim::simcore_models)
 
+fpvsim_add_test(simcore_tests
+    altitude_hold_test.cpp
+    bridge_test.cpp
+    config_test.cpp
+    vehicle_test.cpp
+    LIBS fpvsim::simcore)
+
 set(bf_target_h
     ${PROJECT_SOURCE_DIR}/third_party/betaflight/src/platform/SIMULATOR/target/SITL/target.h)
 

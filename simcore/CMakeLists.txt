@@ -12,13 +12,26 @@ add_library(fpvsim::simcore_models ALIAS fpvsim_simcore_models)
 target_include_directories(fpvsim_simcore_models PUBLIC include)
 target_link_libraries(fpvsim_simcore_models PUBLIC fpvsim::common PRIVATE fpvsim::options)
 
+add_library(fpvsim_simcore STATIC
+    src/bridge/betaflight.cpp
+    src/config/session.cpp
+    src/log/csv_log.cpp
+    src/net/udp_socket.cpp
+    src/pilot/altitude_hold.cpp
+    src/sim/loop.cpp
+    src/sim/vehicle.cpp)
+add_library(fpvsim::simcore ALIAS fpvsim_simcore)
+target_include_directories(fpvsim_simcore PUBLIC include src)
+target_link_libraries(fpvsim_simcore
+    PUBLIC fpvsim::simcore_models nlohmann_json::nlohmann_json
+    PRIVATE fpvsim::options)
+
 add_executable(simcore src/app/main.cpp)
 target_include_directories(simcore PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/generated)
 target_link_libraries(simcore PRIVATE
     fpvsim::options
-    fpvsim::common
+    fpvsim::simcore
     CLI11::CLI11
-    spdlog::spdlog
-    nlohmann_json::nlohmann_json)
+    spdlog::spdlog)
 
 add_subdirectory(tests)
