@@ -1,0 +1,29 @@
+# Placeholder: generic 6S 5" quad, not the target drone
+schema_version: 1
+name: reference_5in
+mass_g: 500
+inertia_frd_kg_m2: [[0.003, 0, 0], [0, 0.003, 0], [0, 0, 0.005]]
+layout:
+  type: quad_x
+  motor_spacing_mm: 226
+  props_out: false
+motor:
+  model: first_order
+  max_rpm: 23873
+  time_constant_s: 0.03
+  k_t: 1.5e-6
+  k_q: 2.0e-8
+  rotor_inertia_kg_m2: 6.0e-6
+imu:
+  offset_mm: [0, 0, 0]
+aero:
+  cda_m2: [0.01, 0.01, 0.02]
+  cop_mm: [0, 0, 0]
+  k_omega: [5.0e-4, 5.0e-4, 5.0e-4]
+contact:
+  leg_drop_mm: 20
+  stiffness_n_per_m: 3000
+  damping_n_s_per_m: 30
+  friction: 0.6
+  friction_regularization_mps: 0.01
+  crash_speed_mps: 6

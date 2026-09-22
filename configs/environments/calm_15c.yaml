@@ -1,0 +1,4 @@
+schema_version: 1
+atmosphere:
+  ground_temperature_c: 15
+  ground_pressure_hpa: 1013.25

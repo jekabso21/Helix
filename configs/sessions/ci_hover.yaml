@@ -1,0 +1,27 @@
+schema_version: 1
+name: ci_hover
+seed: 42
+mode: realtime
+physics_rate_hz: 1000
+duration_s: 36
+betaflight:
+  binary: build/betaflight/betaflight_SITL.elf
+  cli_script: configs/betaflight/baseline_cli.txt
+  cli_extra:
+    - aux 1 1 0 900 2100 0 0   # ANGLE mode always on
+drone: configs/drones/reference_5in.yaml
+environment: configs/environments/calm_15c.yaml
+origin: { lat_deg: 56.0, lon_deg: 24.0, altitude_m: 0 }
+spawn: { north_m: 0, east_m: 0, height_agl_m: 0, heading_deg: 0 }
+input:
+  source: altitude_hold
+  rc_rate_hz: 250
+  altitude_hold:
+    target_height_m: 5
+    climb_rate_mps: 1
+    kp_us_per_m: 100
+    ki_us_per_m_s: 20
+    kd_us_per_mps: 80
+    integral_limit_us: 300
+    arm_delay_s: 6
+logging: { rate_hz: 200, root: runs }
