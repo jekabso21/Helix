@@ -1,9 +1,9 @@
 extends Node3D
-## Main view cameras: 1 chase, 2 side, 3 orbit, 4 free, 5 top
+## Main view cameras: 1 chase, 2 side, 3 orbit, 4 free, 5 top, 6 FPV (the drone camera)
 
-enum Mode { CHASE, SIDE, ORBIT, FREE, TOP }
+enum Mode { CHASE, SIDE, ORBIT, FREE, TOP, FPV }
 
-const MODE_NAMES := ["Chase", "Side", "Orbit", "Free", "Top"]
+const MODE_NAMES := ["Chase", "Side", "Orbit", "Free", "Top", "FPV"]
 const CHASE_OFFSET := Vector3(0.0, 0.7, 2.0)
 const SIDE_OFFSET := Vector3(2.2, 0.5, 0.0)
 const TOP_HEIGHT := 12.0
@@ -27,11 +27,17 @@ var _dragging: bool = false
 
 func _ready() -> void:
 	camera.current = true
-	set_mode(Mode.SIDE)
+	set_mode(Mode.CHASE)
 
 
 func set_mode(new_mode: int) -> void:
 	mode = new_mode
+	var drone := get_node_or_null(drone_path) as Node3D
+	var fpv := drone.get_node_or_null("FpvCamera") as Camera3D if drone != null else null
+	if mode == Mode.FPV and fpv != null:
+		fpv.current = true
+	else:
+		camera.current = true
 	if mode == Mode.FREE:
 		_free_yaw = camera.rotation.y
 		_free_pitch = camera.rotation.x
@@ -47,6 +53,7 @@ func _unhandled_input(event: InputEvent) -> void:
 			KEY_3: set_mode(Mode.ORBIT)
 			KEY_4: set_mode(Mode.FREE)
 			KEY_5: set_mode(Mode.TOP)
+			KEY_6: set_mode(Mode.FPV)
 		return
 	var button := event as InputEventMouseButton
 	if button != null:
@@ -86,6 +93,8 @@ func _process(delta: float) -> void:
 			camera.look_at(target, Vector3(0.0, 0.0, -1.0))
 		Mode.FREE:
 			_free(delta)
+		Mode.FPV:
+			pass
 
 
 func _chase(drone: Node3D, target: Vector3, delta: float) -> void:

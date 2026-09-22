@@ -3,11 +3,13 @@ extends Node
 
 signal render_state(state: RenderState)
 signal telemetry(data: Dictionary)
+signal input_raw(data: Dictionary)
 signal api_connected()
 signal api_disconnected()
 signal command_result(method: String, ok: bool, result: Dictionary)
 
 const TELEMETRY_RATE_HZ := 30.0
+const INPUT_RAW_RATE_HZ := 20.0
 
 var render_port: int = 7710
 var api_host: String = "127.0.0.1"
@@ -61,6 +63,7 @@ func _poll_tcp() -> void:
 			api_connected.emit()
 			_subscribed = false
 			request("subscribe", {"topic": "telemetry", "rate_hz": TELEMETRY_RATE_HZ})
+			request("subscribe", {"topic": "input_raw", "rate_hz": INPUT_RAW_RATE_HZ})
 		_read_lines()
 		return
 	if api_is_connected:
@@ -98,6 +101,8 @@ func _handle_line(line: String) -> void:
 	if doc.has("event"):
 		if doc["event"] == "telemetry":
 			telemetry.emit(doc["data"])
+		elif doc["event"] == "input_raw":
+			input_raw.emit(doc["data"])
 		return
 	var id: int = int(doc.get("id", -1))
 	if not _pending.has(id):

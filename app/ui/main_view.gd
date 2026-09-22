@@ -12,4 +12,4 @@ func _ready() -> void:
 
 func _on_mode_changed(mode: int) -> void:
 	var names: Array = _rig.MODE_NAMES
-	_caption.text = "%s view   [1-5 modes, right drag, wheel]" % names[mode]
+	_caption.text = "%s view   [1-6 modes, right drag, wheel]" % names[mode]
