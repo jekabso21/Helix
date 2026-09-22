@@ -109,7 +109,7 @@ def test_mapping_rejects_unknown_channel_and_double_source(tmp_path: Path) -> No
     session.write_text(
         (REPO_ROOT / "configs/sessions/dev_gamepad.yaml")
         .read_text()
-        .replace("configs/input/radiomaster_boxer.yaml", str(mapping))
+        .replace("configs/input/default.yaml", str(mapping))
     )
     mapping.write_text(
         "schema_version: 1\nname: bad\ndevice: {name_contains: x}\n"

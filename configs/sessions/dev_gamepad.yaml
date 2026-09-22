@@ -5,9 +5,13 @@ duration_s: 0
 betaflight:
   cli_extra:
     - aux 1 1 1 1700 2100 0 0   # ANGLE mode on AUX2 (switch SD)
+    - set angle_limit = 80
+    - set thr_mid = 35           # hover sits near the middle of the throttle stick
+    - set thr_expo = 30
+    - set small_angle = 180      # allow arming at any tilt after a crash reset
 drone: configs/drones/reference_5in.yaml
 environment: configs/environments/calm_15c.yaml
 input:
   source: gamepad
   rc_rate_hz: 250
-  mapping: configs/input/radiomaster_boxer.yaml
+  mapping: configs/input/default.yaml

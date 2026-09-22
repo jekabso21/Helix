@@ -1,0 +1,2 @@
+# The mapping dev sessions use; the app's Input tab rewrites this file when you save a profile
+extends: radiomaster_boxer.yaml

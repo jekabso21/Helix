@@ -77,6 +77,20 @@ def test_validate_reports_errors_and_status_is_idle(server: Server, tmp_path: Pa
     client.close()
 
 
+def test_input_mappings_are_listed_and_saved(server: Server, tmp_path: Path) -> None:
+    client = LineClient(server.server_address[1])
+    listed = client.request("list_input_mappings")["result"]["mappings"]
+    names = {m["name"] for m in listed}
+    assert {"radiomaster_boxer", "default"} <= names
+    boxer = next(m for m in listed if m["name"] == "radiomaster_boxer")
+    assert boxer["mapping"]["channels"]["throttle"]["axis"] == 0
+    bad = client.request(
+        "save_input_mapping", {"name": "x", "mapping": {"channels": {"gear": {"axis": 1}}}}
+    )
+    assert bad["error"]["code"] == "invalid_state"
+    client.close()
+
+
 def test_errors_use_the_shared_codes(server: Server) -> None:
     client = LineClient(server.server_address[1])
     assert client.request("fly")["error"]["code"] == "unknown_method"

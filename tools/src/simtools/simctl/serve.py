@@ -8,7 +8,11 @@ import time
 from pathlib import Path
 from typing import Any, cast
 
-from simtools.config.resolver import ConfigError, resolve_session, write_run_directory
+import yaml
+from pydantic import ValidationError
+
+from simtools.config.resolver import ConfigError, load_yaml, resolve_session, write_run_directory
+from simtools.config.schemas import InputMappingConfig
 from simtools.msp import MspCommand, MspError, parse_status_ex
 from simtools.simctl.launcher import LaunchError, ProcessSet, find_simcore, start_processes
 from simtools.sitl import HOST, connect_uart
@@ -56,6 +60,52 @@ class Supervisor:
         except ConfigError as error:
             return {"ok": False, "errors": str(error).splitlines()}
         return {"ok": True, "name": resolved.name}
+
+    def list_input_mappings(self) -> list[Json]:
+        mappings: list[Json] = []
+        for path in sorted((self.base_dir / "configs/input").glob("*.yaml")):
+            entry: Json = {"name": path.stem, "path": str(path.relative_to(self.base_dir))}
+            try:
+                mapping = InputMappingConfig.model_validate(load_yaml(path))
+                entry["device_name_contains"] = mapping.device.name_contains
+                entry["mapping"] = {
+                    "device_name_contains": mapping.device.name_contains,
+                    "arm_channel": mapping.arm_channel,
+                    "channels": {
+                        name: source.model_dump(exclude_none=True)
+                        for name, source in mapping.channels.items()
+                    },
+                }
+            except (ConfigError, ValidationError) as error:
+                entry["error"] = str(error)
+            mappings.append(entry)
+        return mappings
+
+    def save_input_mapping(self, name: str, mapping: Json, make_default: bool) -> Json:
+        """Writes configs/input/<name>.yaml from the API mapping shape; validates first."""
+        if not name.replace("_", "").replace("-", "").isalnum() or name == "default":
+            raise LaunchError("mapping name must be alphanumeric and not 'default'")
+        document: Json = {
+            "schema_version": 1,
+            "name": name,
+            "device": {"name_contains": mapping.get("device_name_contains", "")},
+            "channels": mapping.get("channels", {}),
+            "arm_channel": mapping.get("arm_channel", "aux1"),
+        }
+        try:
+            InputMappingConfig.model_validate(document)
+        except ValidationError as error:
+            raise LaunchError(f"invalid mapping: {error}") from error
+        directory = self.base_dir / "configs/input"
+        directory.mkdir(parents=True, exist_ok=True)
+        path = directory / f"{name}.yaml"
+        path.write_text(yaml.safe_dump(document, sort_keys=False))
+        if make_default:
+            (directory / "default.yaml").write_text(
+                "# The mapping dev sessions use; saving a profile as default rewrites it\n"
+                f"extends: {name}.yaml\n"
+            )
+        return {"path": str(path.relative_to(self.base_dir)), "default": make_default}
 
     def status(self) -> Json:
         with self._lock:
@@ -279,6 +329,15 @@ class Handler(socketserver.StreamRequestHandler):
                     str(params.get("process", "simcore")), int(params.get("lines", 50))
                 )
                 return self._ok(request_id, {"lines": lines}), None
+            if method == "list_input_mappings":
+                return self._ok(request_id, {"mappings": supervisor.list_input_mappings()}), None
+            if method == "save_input_mapping":
+                result = supervisor.save_input_mapping(
+                    str(params["name"]),
+                    dict(params["mapping"]),
+                    bool(params.get("make_default", False)),
+                )
+                return self._ok(request_id, result), None
             if method == "subscribe":
                 topic = str(params.get("topic", ""))
                 if topic not in ("status", "fc"):
