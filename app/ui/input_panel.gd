@@ -1,8 +1,11 @@
 extends VBoxContainer
 ## Input tab: device choice, live channels and raw axes, mapping table, calibration wizard, save
 
-const CHANNELS := ["roll", "pitch", "throttle", "yaw", "aux1", "aux2", "aux3", "aux4"]
-const CHANNEL_LABELS := ["Roll", "Pitch", "Throttle", "Yaw", "AUX1 arm", "AUX2 angle", "AUX3", "AUX4"]
+const CHANNELS := ["roll", "pitch", "throttle", "yaw", "aux1", "aux2", "aux3", "aux4", "aux5", "aux6", "aux7", "aux8"]
+const CHANNEL_LABELS := [
+	"Roll (right +)", "Pitch (forward +)", "Throttle (up +)", "Yaw (right +)",
+	"AUX1 arm (on +)", "AUX2 angle (on +)", "AUX3", "AUX4", "AUX5", "AUX6", "AUX7", "AUX8",
+]
 const WIZARD_STEPS := [
 	["throttle", "Move the THROTTLE stick all the way UP, then back down"],
 	["roll", "Move the ROLL stick fully RIGHT, then centre it"],
@@ -22,6 +25,10 @@ var _axis_bars: Array[ProgressBar] = []
 var _button_labels: Array[Label] = []
 var _source_options: Array[OptionButton] = []
 var _invert_checks: Array[CheckBox] = []
+var _bind_buttons: Array[Button] = []
+var _bind_channel: int = -1
+var _bind_baseline: Array = []
+var _bind_buttons_baseline: Array = []
 var _wizard_step: int = -1
 var _wizard_baseline: Array = []
 var _wizard_buttons_baseline: Array = []
@@ -105,11 +112,17 @@ func _build_raw_view() -> void:
 
 
 func _build_table() -> void:
-	_table.columns = 3
+	_table.columns = 4
 	for i in CHANNELS.size():
 		var name := Label.new()
 		name.text = CHANNEL_LABELS[i]
 		_table.add_child(name)
+		var bind := Button.new()
+		bind.text = "Bind"
+		bind.tooltip_text = "Press, then move this control in its positive direction"
+		bind.pressed.connect(_start_bind.bind(i))
+		_table.add_child(bind)
+		_bind_buttons.append(bind)
 		var source := OptionButton.new()
 		source.item_selected.connect(func(_index: int) -> void: _table_changed())
 		_table.add_child(source)
@@ -120,6 +133,73 @@ func _build_table() -> void:
 		_table.add_child(invert)
 		_invert_checks.append(invert)
 	_fill_source_options(8, 8)
+
+
+func _start_bind(channel: int) -> void:
+	if _raw.is_empty():
+		_message.text = "no raw input yet: start a session and select a device first"
+		return
+	if _bind_channel == channel:
+		_end_bind()
+		return
+	_end_bind()
+	_bind_channel = channel
+	_bind_baseline = _raw["axes"].duplicate()
+	_bind_buttons_baseline = _raw["buttons"].duplicate()
+	_bind_buttons[channel].text = "move it..."
+	_message.text = "Binding %s: move that control now (%s), or press the button again to cancel" % [
+		CHANNELS[channel], CHANNEL_LABELS[channel]
+	]
+
+
+func _end_bind() -> void:
+	if _bind_channel >= 0:
+		_bind_buttons[_bind_channel].text = "Bind"
+	_bind_channel = -1
+
+
+func _bind_watch(axes: Array, buttons: Array) -> void:
+	var detected := _detect_movement(axes, buttons, _bind_baseline, _bind_buttons_baseline)
+	if detected.is_empty():
+		return
+	var channel := _bind_channel
+	_end_bind()
+	_set_row(channel, detected)
+	_message.text = "%s bound to %s%s" % [
+		CHANNELS[channel],
+		"axis %d" % int(detected["axis"]) if detected.has("axis") else "button %d" % int(detected["button"]),
+		" (inverted)" if detected["inverted"] else ""
+	]
+	_table_changed()
+
+
+## The axis that moved most past the threshold, or the first button that changed; {} if none yet
+func _detect_movement(axes: Array, buttons: Array, axes_baseline: Array, buttons_baseline: Array) -> Dictionary:
+	var best := -1
+	var best_delta := 0.0
+	for i in mini(axes.size(), axes_baseline.size()):
+		var delta: float = float(axes[i]) - float(axes_baseline[i])
+		if absf(delta) > absf(best_delta):
+			best_delta = delta
+			best = i
+	if best >= 0 and absf(best_delta) > AXIS_THRESHOLD:
+		return {"axis": best, "inverted": best_delta < 0.0, "deadband": 0.0}
+	for i in mini(buttons.size(), buttons_baseline.size()):
+		if int(buttons[i]) != int(buttons_baseline[i]):
+			return {"button": i, "inverted": int(buttons_baseline[i]) != 0, "deadband": 0.0}
+	return {}
+
+
+func _set_row(channel: int, source: Dictionary) -> void:
+	var was_updating := _updating_table
+	_updating_table = true
+	var option := _source_options[channel]
+	var text: String = "axis %d" % int(source["axis"]) if source.has("axis") else "button %d" % int(source["button"])
+	for item in option.item_count:
+		if option.get_item_text(item) == text:
+			option.selected = item
+	_invert_checks[channel].button_pressed = source.get("inverted", false)
+	_updating_table = was_updating
 
 
 func _fill_source_options(axes: int, buttons: int) -> void:
@@ -185,12 +265,7 @@ func _fill_table_from_mapping() -> void:
 		option.selected = 0
 		invert.button_pressed = false
 		if channels.has(CHANNELS[i]):
-			var source: Dictionary = channels[CHANNELS[i]]
-			var text: String = "axis %d" % int(source["axis"]) if source.has("axis") else "button %d" % int(source["button"])
-			for item in option.item_count:
-				if option.get_item_text(item) == text:
-					option.selected = item
-			invert.button_pressed = source.get("inverted", false)
+			_set_row(i, channels[CHANNELS[i]])
 	_updating_table = false
 
 
@@ -231,7 +306,9 @@ func _on_input_raw(data: Dictionary) -> void:
 		if int(buttons[i]) != 0:
 			pressed.append(str(i))
 	_button_labels[0].text = "buttons pressed: %s" % (", ".join(pressed) if pressed.size() > 0 else "-")
-	if _wizard_step >= 0:
+	if _bind_channel >= 0:
+		_bind_watch(axes, buttons)
+	elif _wizard_step >= 0:
 		_wizard_watch(axes, buttons)
 
 
@@ -259,25 +336,15 @@ func _wizard_watch(axes: Array, buttons: Array) -> void:
 	var channel: String = WIZARD_STEPS[_wizard_step][0]
 	if _wizard_mapping.has(channel):
 		return
-	var best := -1
-	var best_delta := 0.0
-	for i in mini(axes.size(), _wizard_baseline.size()):
-		var delta: float = float(axes[i]) - float(_wizard_baseline[i])
-		if absf(delta) > absf(best_delta):
-			best_delta = delta
-			best = i
-	if best >= 0 and absf(best_delta) > AXIS_THRESHOLD:
-		_wizard_mapping[channel] = {"axis": best, "inverted": best_delta < 0.0, "deadband": 0.0}
-		_wizard_text.text += "\n-> axis %d%s" % [best, " (inverted)" if best_delta < 0.0 else ""]
-		_wizard_next.disabled = false
+	var detected := _detect_movement(axes, buttons, _wizard_baseline, _wizard_buttons_baseline)
+	if detected.is_empty():
 		return
-	for i in mini(buttons.size(), _wizard_buttons_baseline.size()):
-		if int(buttons[i]) != int(_wizard_buttons_baseline[i]):
-			var inverted: bool = int(_wizard_buttons_baseline[i]) != 0
-			_wizard_mapping[channel] = {"button": i, "inverted": inverted, "deadband": 0.0}
-			_wizard_text.text += "\n-> button %d%s" % [i, " (inverted)" if inverted else ""]
-			_wizard_next.disabled = false
-			return
+	_wizard_mapping[channel] = detected
+	_wizard_text.text += "\n-> %s%s" % [
+		"axis %d" % int(detected["axis"]) if detected.has("axis") else "button %d" % int(detected["button"]),
+		" (inverted)" if detected["inverted"] else ""
+	]
+	_wizard_next.disabled = false
 
 
 func _wizard_advance(skip: bool = false) -> void:

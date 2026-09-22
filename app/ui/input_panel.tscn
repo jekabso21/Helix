@@ -49,11 +49,11 @@ layout_mode = 2
 
 [node name="MappingTitle" type="Label" parent="InputPanel"]
 layout_mode = 2
-text = "Mapping (changes apply live)"
+text = "Mapping: press Bind, then move the control in its positive direction (changes apply live)"
 
 [node name="Mapping" type="GridContainer" parent="InputPanel"]
 layout_mode = 2
-columns = 3
+columns = 4
 
 [node name="Actions" type="HBoxContainer" parent="InputPanel"]
 layout_mode = 2
