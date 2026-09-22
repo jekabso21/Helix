@@ -1,0 +1,13 @@
+schema_version: 1
+name: dev_gamepad
+seed: 42
+duration_s: 0
+betaflight:
+  cli_extra:
+    - aux 1 1 1 1700 2100 0 0   # ANGLE mode on AUX2 (switch SD)
+drone: configs/drones/reference_5in.yaml
+environment: configs/environments/calm_15c.yaml
+input:
+  source: gamepad
+  rc_rate_hz: 250
+  mapping: configs/input/radiomaster_boxer.yaml

@@ -51,9 +51,53 @@ class AltitudeHoldConfig(Strict):
 
 
 class InputConfig(Strict):
-    source: Literal["altitude_hold"] = "altitude_hold"
+    source: Literal["altitude_hold", "gamepad"] = "altitude_hold"
     rc_rate_hz: int = 250
     altitude_hold: AltitudeHoldConfig = Field(default_factory=AltitudeHoldConfig)
+    mapping: str | None = None
+
+    @model_validator(mode="after")
+    def mapping_matches_source(self) -> "InputConfig":
+        if self.source == "gamepad" and self.mapping is None:
+            raise ValueError("input.mapping is required with source: gamepad")
+        return self
+
+
+CHANNEL_NAMES = ("roll", "pitch", "throttle", "yaw", *(f"aux{i}" for i in range(1, 13)))
+
+
+class ChannelSourceConfig(Strict):
+    axis: int | None = Field(default=None, ge=0)
+    button: int | None = Field(default=None, ge=0)
+    inverted: bool = False
+    deadband: float = Field(default=0.0, ge=0.0, lt=1.0)
+
+    @model_validator(mode="after")
+    def exactly_one_source(self) -> "ChannelSourceConfig":
+        if (self.axis is None) == (self.button is None):
+            raise ValueError("exactly one of axis or button")
+        return self
+
+
+class DeviceConfig(Strict):
+    name_contains: str
+
+
+class InputMappingConfig(Strict):
+    schema_version: Literal[1]
+    name: str
+    device: DeviceConfig
+    channels: dict[str, ChannelSourceConfig]
+    arm_channel: str = "aux1"
+
+    @model_validator(mode="after")
+    def channel_names_are_known(self) -> "InputMappingConfig":
+        for name in (*self.channels, self.arm_channel):
+            if name not in CHANNEL_NAMES:
+                raise ValueError(
+                    f"unknown channel '{name}'; use roll, pitch, throttle, yaw, aux1..aux12"
+                )
+        return self
 
 
 class ControlApiConfig(Strict):

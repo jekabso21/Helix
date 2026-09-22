@@ -12,7 +12,12 @@ import yaml
 from pydantic import ValidationError
 
 from simtools.config import units
-from simtools.config.schemas import DroneConfig, EnvironmentConfig, SessionConfig
+from simtools.config.schemas import (
+    DroneConfig,
+    EnvironmentConfig,
+    InputMappingConfig,
+    SessionConfig,
+)
 
 STANDARD_GRAVITY_MPS2 = 9.80665
 RESOLVED_SCHEMA_VERSION = 1
@@ -59,7 +64,7 @@ def _validation_message(path: Path, error: ValidationError) -> str:
     return "\n".join(lines)
 
 
-def _load_model[T: SessionConfig | DroneConfig | EnvironmentConfig](
+def _load_model[T: SessionConfig | DroneConfig | EnvironmentConfig | InputMappingConfig](
     model: type[T], path: Path
 ) -> T:
     try:
@@ -155,8 +160,24 @@ def resolve_session(session_path: Path, base_dir: Path) -> ResolvedSession:
         if line.strip() and not line.strip().startswith("#")
     ] + list(session.betaflight.cli_extra)
 
-    hold = session.input.altitude_hold.model_dump()
-    hold["hover_throttle_us"] = hover_throttle_us(drone)
+    resolved_input: dict[str, Any] = {
+        "source": session.input.source,
+        "rc_rate_hz": session.input.rc_rate_hz,
+    }
+    if session.input.source == "gamepad":
+        mapping = _load_model(InputMappingConfig, base_dir / str(session.input.mapping))
+        resolved_input["mapping"] = {
+            "device_name_contains": mapping.device.name_contains,
+            "arm_channel": mapping.arm_channel,
+            "channels": {
+                name: source.model_dump(exclude_none=True)
+                for name, source in mapping.channels.items()
+            },
+        }
+    else:
+        hold = session.input.altitude_hold.model_dump()
+        hold["hover_throttle_us"] = hover_throttle_us(drone)
+        resolved_input["altitude_hold"] = hold
     ports = {
         "pwm": session.betaflight.ports.pwm,
         "fdm": session.betaflight.ports.fdm,
@@ -183,11 +204,7 @@ def resolve_session(session_path: Path, base_dir: Path) -> ResolvedSession:
             "height_agl_m": session.spawn.height_agl_m,
             "heading_rad": units.deg_to_rad(session.spawn.heading_deg),
         },
-        "input": {
-            "source": session.input.source,
-            "rc_rate_hz": session.input.rc_rate_hz,
-            "altitude_hold": hold,
-        },
+        "input": resolved_input,
         "control_api": {"host": session.control_api.host, "port": session.control_api.port},
         "app": {
             "host": session.app.host,
