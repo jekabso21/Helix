@@ -19,7 +19,7 @@ git submodule update --init third_party/betaflight
 ./scripts/bf_build.sh               # Betaflight SITL -> build/betaflight/betaflight_SITL.elf
 cmake --preset dev && cmake --build --preset dev
 ctest --preset dev
-cd tools && uv sync && uv run pytest && cd ..
+cd tools && uv sync && uv run pytest && cd ..    # add -m integration for the SITL flight test
 pre-commit install
 ```
 
@@ -31,6 +31,8 @@ CMake presets: `dev` (GCC, Debug, ASan and UBSan), `clang` (Clang, warnings as e
 ```bash
 ./scripts/run_app.sh                                        # GUI app (placeholder layout so far)
 ./scripts/run_app.sh -- --screenshot /tmp/app.png           # save the window content and quit
+uv run --project tools simctl validate configs/sessions/ci_hover.yaml
+uv run --project tools simctl run configs/sessions/ci_hover.yaml --headless   # hover test flight, run dir in runs/
 uv run --project tools python tools/spikes/spin_motors.py   # arm Betaflight SITL, read motors
 uv run --project tools python tools/spikes/radio_passthrough.py --duration 60   # USB radio -> SITL
 ./scripts/configurator_bridge.sh                            # WebSocket bridge for app.betaflight.com

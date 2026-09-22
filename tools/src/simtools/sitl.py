@@ -13,12 +13,21 @@ PORT_UART1 = 5761
 PORT_UART3 = 5763
 
 
-def start_sitl(binary: Path, workdir: Path, log_name: str) -> subprocess.Popen[bytes]:
+class SitlPortBusyError(RuntimeError):
+    pass
+
+
+def sitl_port_busy() -> bool:
+    # Looks at the listening state only; a probe connection would take the single UART client slot
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
-        if probe.connect_ex((HOST, PORT_UART1)) == 0:
-            raise SystemExit(
-                f"error: another SITL already listens on TCP {PORT_UART1}; stop it first"
-            )
+        return probe.connect_ex((HOST, PORT_UART1)) == 0
+
+
+def start_sitl(binary: Path, workdir: Path, log_name: str) -> subprocess.Popen[bytes]:
+    if sitl_port_busy():
+        raise SitlPortBusyError(
+            f"another Betaflight SITL already listens on TCP {PORT_UART1}; stop it first"
+        )
     log = (workdir / log_name).open("wb")
     # setpriv makes the kernel kill SITL when the parent dies, however it ends
     command = ["setpriv", "--pdeathsig", "KILL", str(binary.resolve())]
