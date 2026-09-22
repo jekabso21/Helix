@@ -21,6 +21,9 @@ struct RunSummary {
 };
 
 // Blocks until duration_s of sim time has elapsed; realtime paced with the wall clock
+// Set by a signal handler; the loop exits cleanly at the next step
+void request_stop() noexcept;
+
 // info is what the control API returns for get_info
 RunSummary run_realtime(const config::SessionConfig& session, const VehicleParams& drone,
                         const nlohmann::json& info);

@@ -1,6 +1,7 @@
 #include <fpvsim/sim/loop.hpp>
 
 #include <algorithm>
+#include <atomic>
 #include <chrono>
 #include <cmath>
 #include <memory>
@@ -22,6 +23,8 @@
 namespace fpvsim::sim {
 
 namespace {
+
+std::atomic<bool> g_stop_requested{false};
 
 namespace bf = bridge::betaflight;
 
@@ -160,6 +163,8 @@ bf::RcChannels read_rc(input::JoystickManager* joystick, const input::InputMappi
 
 }  // namespace
 
+void request_stop() noexcept { g_stop_requested.store(true, std::memory_order_relaxed); }
+
 RunSummary run_realtime(const config::SessionConfig& session, const VehicleParams& drone,
                         const nlohmann::json& info) {
   const SimTime step = step_from_rate_hz(session.physics_rate_hz).value_or(SimTime{});
@@ -226,7 +231,8 @@ RunSummary run_realtime(const config::SessionConfig& session, const VehicleParam
   std::int64_t wall_tick = 0;
 
   const auto wall_start = std::chrono::steady_clock::now();
-  while (running && (total_steps < 0 || step_index < total_steps)) {
+  while (running && !g_stop_requested.load(std::memory_order_relaxed) &&
+         (total_steps < 0 || step_index < total_steps)) {
     const auto step_begin = std::chrono::steady_clock::now();
 
     running = apply_commands(commands_in, results_out, t, vehicle, spawn, autopilot, commands,

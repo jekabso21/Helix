@@ -1,3 +1,4 @@
+#include <csignal>
 #include <cstdlib>
 #include <exception>
 #include <string>
@@ -49,6 +50,8 @@ int run(int argc, char** argv) {
 }  // namespace
 
 int main(int argc, char** argv) {
+  std::signal(SIGTERM, [](int) { fpvsim::sim::request_stop(); });
+  std::signal(SIGINT, [](int) { fpvsim::sim::request_stop(); });
   try {
     return run(argc, argv);
   } catch (const std::exception& error) {
