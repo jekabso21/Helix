@@ -3,7 +3,14 @@ name = "simtools"
 version = "0.1.0"
 description = "fpvsim tools: config resolver, model compiler, launcher (simctl), analysis"
 requires-python = ">=3.12,<3.13"
-dependencies = ["pydantic>=2.9", "pyyaml>=6", "typer>=0.12"]
+dependencies = [
+    "numpy>=2.5.3",
+    "pydantic>=2.9",
+    "pyyaml>=6",
+    "scipy>=1.18.1",
+    "trimesh>=5.1.0",
+    "typer>=0.12",
+]
 
 [dependency-groups]
 dev = ["pytest>=8", "ruff>=0.9", "pyright>=1.1.390"]

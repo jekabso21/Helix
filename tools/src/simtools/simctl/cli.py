@@ -1,10 +1,17 @@
+import json
 import sys
 from pathlib import Path
 from typing import Annotated
 
 import typer
 
-from simtools.config.resolver import ConfigError, resolve_session, write_run_directory
+from simtools.config.resolver import (
+    ConfigError,
+    load_drone,
+    resolve_session,
+    write_run_directory,
+)
+from simtools.modelc import compile_drone, export_glb, report, to_json
 from simtools.simctl.launcher import (
     LaunchError,
     find_simcore,
@@ -59,6 +66,29 @@ def run(
         raise typer.Exit(code=2) from error
     typer.echo(f"simcore exit code {result.exit_code}; logs in {result.run_dir / 'logs'}")
     raise typer.Exit(code=result.exit_code)
+
+
+@app.command()
+def model(
+    drone: Path,
+    out: Annotated[
+        Path | None, typer.Option("--out", help="Directory for drone.json and drone.glb")
+    ] = None,
+    show_report: Annotated[bool, typer.Option("--report", help="Print the model report")] = False,
+) -> None:
+    """Compile a drone parts list into mass properties, geometry and a glb."""
+    try:
+        compiled = compile_drone(load_drone(drone))
+    except ConfigError as error:
+        typer.echo(str(error), err=True)
+        raise typer.Exit(code=2) from error
+    if out is not None:
+        out.mkdir(parents=True, exist_ok=True)
+        (out / "drone.json").write_text(json.dumps(to_json(compiled), indent=2))
+        (out / "drone.glb").write_bytes(export_glb(compiled))
+        typer.echo(f"wrote {out / 'drone.json'} and {out / 'drone.glb'}")
+    if show_report or out is None:
+        typer.echo(report(compiled), nl=False)
 
 
 @app.command()

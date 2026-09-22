@@ -18,7 +18,7 @@ def test_ci_hover_session_resolves_to_si_json() -> None:
     assert session["physics_rate_hz"] == 1000
     assert session["atmosphere"] == {"ground_temperature_k": 288.15, "ground_pressure_pa": 101325.0}
     assert session["origin"]["lat_rad"] == pytest.approx(math.radians(56.0))
-    assert session["input"]["altitude_hold"]["hover_throttle_us"] == pytest.approx(1361.7, abs=0.5)
+    assert session["input"]["altitude_hold"]["hover_throttle_us"] == pytest.approx(1360.5, abs=0.5)
     assert "aux 1 1 0 900 2100 0 0" in resolved.cli_lines
     assert "aux 0 0 0 1700 2100 0 0" in resolved.cli_lines
 
@@ -27,13 +27,18 @@ def test_quad_x_layout_matches_betaflight_motor_order() -> None:
     drone = resolve_session(SESSION, REPO_ROOT).drone
     motors = drone["motors"]
     arm = 0.226 / 2 / math.sqrt(2)
+    cg = drone["cg_from_origin_frd_m"]
     assert [m["bf_index"] for m in motors] == [1, 2, 3, 4]
-    assert motors[0]["position_frd_m"] == pytest.approx([-arm, arm, 0.0])  # rear right
-    assert motors[1]["position_frd_m"] == pytest.approx([arm, arm, 0.0])  # front right
+    assert motors[0]["position_frd_m"] == pytest.approx(
+        [-arm - cg[0], arm - cg[1], -cg[2]]
+    )  # rear right
+    assert motors[1]["position_frd_m"] == pytest.approx(
+        [arm - cg[0], arm - cg[1], -cg[2]]
+    )  # front right
     assert [m["spin"] for m in motors] == [1.0, -1.0, -1.0, 1.0]
     assert motors[0]["first_order"]["max_speed_radps"] == pytest.approx(2500.0, abs=0.1)
-    assert drone["mass_kg"] == 0.5
-    assert drone["contact"]["points_frd_m"][0][2] == pytest.approx(0.02)
+    assert drone["mass_kg"] == pytest.approx(0.497)
+    assert drone["contact"]["points_frd_m"][0][2] == pytest.approx(0.02 - cg[2])
 
 
 def test_props_out_reverses_all_spins(tmp_path: Path) -> None:

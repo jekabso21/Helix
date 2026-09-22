@@ -18,6 +18,7 @@ fpvsim_add_test(simcore_tests
     mapping_test.cpp
     vehicle_test.cpp
     LIBS fpvsim::simcore)
+target_compile_definitions(simcore_tests PRIVATE FPVSIM_GOLDEN_DIR="${PROJECT_SOURCE_DIR}/tests/golden")
 
 set(bf_target_h
     ${PROJECT_SOURCE_DIR}/third_party/betaflight/src/platform/SIMULATOR/target/SITL/target.h)

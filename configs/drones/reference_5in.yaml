@@ -1,12 +1,13 @@
 # Placeholder: generic 6S 5" quad, not the target drone
 schema_version: 1
 name: reference_5in
-mass_g: 500
-inertia_frd_kg_m2: [[0.0015, 0, 0], [0, 0.0015, 0], [0, 0, 0.0028]]
 layout:
   type: quad_x
   motor_spacing_mm: 226
   props_out: false
+  arm: { width_mm: 12, thickness_mm: 5, mass_g: 11 }
+  motor_body: { diameter_mm: 28, height_mm: 30, mass_g: 30 }
+  prop_body: { diameter_mm: 127, thickness_mm: 5, mass_g: 5 }
 motor:
   model: first_order
   max_rpm: 23873
@@ -15,11 +16,18 @@ motor:
   k_q: 2.0e-8
   k_h: 6.0e-5
   rotor_inertia_kg_m2: 6.0e-6
-imu:
-  offset_mm: [0, 0, 0]
+parts:
+  frame_body: { shape: box, size_mm: [150, 40, 30], mass_g: 90, pos_mm: [0, 0, -12] }
+  stack: { shape: box, size_mm: [36, 36, 12], mass_g: 20, pos_mm: [0, 0, -15] }
+  battery: { shape: box, size_mm: [75, 35, 38], mass_g: 185, pos_mm: [0, 0, -46], color: "#3060c0" }
+  camera: { shape: box, size_mm: [19, 19, 20], mass_g: 8, pos_mm: [55, 0, -15], rot_deg: [0, 35, 0], color: "#101010" }
+  vtx: { shape: box, size_mm: [30, 30, 6], mass_g: 8, pos_mm: [-45, 0, -20] }
+  receiver: { shape: box, size_mm: [15, 12, 4], mass_g: 2, pos_mm: [-60, 0, -20] }
+imu: { part: stack }
+cameras:
+  - { name: main_fpv, part: camera, offset_mm: [10, 0, 0] }
 aero:
-  cda_m2: [0.01, 0.01, 0.02]
-  cop_mm: [0, 0, 0]
+  cd: 1.0
   k_omega: [5.0e-4, 5.0e-4, 5.0e-4]
 contact:
   leg_drop_mm: 20

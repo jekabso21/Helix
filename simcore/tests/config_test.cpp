@@ -121,3 +121,15 @@ TEST(ConfigTest, RejectsMotorsOutOfOrder) {
   text.replace(text.find("\"bf_index\": 2"), 13, "\"bf_index\": 3");
   EXPECT_THROW(config::parse_drone(text, "drone.json"), std::runtime_error);
 }
+
+TEST(ConfigTest, LoadsTheCompiledReferenceDrone) {
+  const fpvsim::sim::VehicleParams drone =
+      config::load_drone(std::string(FPVSIM_GOLDEN_DIR) + "/config/reference_5in.drone.json");
+  EXPECT_NEAR(drone.mass.mass_kg, 0.497, 1e-9);
+  EXPECT_EQ(drone.motor_count, 4U);
+  EXPECT_EQ(drone.contact.point_count, 4U);
+  EXPECT_NEAR(drone.mounts[1].position_frd.x(), 0.08, 1e-3);   // front right, from the CG
+  EXPECT_NEAR(drone.mounts[1].position_frd.z(), 0.0253, 1e-3);  // CG sits above the motor plane
+  EXPECT_NEAR(drone.mass.inertia_frd(0, 0), 1.233e-3, 1e-5);
+  EXPECT_NEAR(drone.imu_offset_frd.z(), 0.0103, 1e-3);
+}

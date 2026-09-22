@@ -1,4 +1,5 @@
-from typing import Literal
+import re
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -153,29 +154,118 @@ class SessionConfig(Strict):
         return self
 
 
+GENERATED_PART = re.compile(r"^(arm|motor|prop)\d+$")
+
+
+class PartBase(Strict):
+    mass_g: float = Field(gt=0.0)
+    pos_mm: Vector3 = (0.0, 0.0, 0.0)
+    rot_deg: Vector3 = (0.0, 0.0, 0.0)
+    color: str | None = Field(default=None, pattern=r"^#[0-9a-fA-F]{6}$")
+
+
+class BoxPart(PartBase):
+    shape: Literal["box"]
+    size_mm: Vector3
+
+
+class CylinderPart(PartBase):
+    shape: Literal["cylinder"]
+    diameter_mm: float = Field(gt=0.0)
+    height_mm: float = Field(gt=0.0)
+
+
+class SpherePart(PartBase):
+    shape: Literal["sphere"]
+    diameter_mm: float = Field(gt=0.0)
+
+
+class MeshPart(PartBase):
+    shape: Literal["mesh"]
+    file: str
+
+    @model_validator(mode="after")
+    def not_supported(self) -> "MeshPart":
+        raise ValueError("mesh parts are reserved but not supported yet")
+
+
+Part = Annotated[BoxPart | CylinderPart | SpherePart | MeshPart, Field(discriminator="shape")]
+
+
+class ArmConfig(Strict):
+    width_mm: float = Field(default=12.0, gt=0.0)
+    thickness_mm: float = Field(default=5.0, gt=0.0)
+    mass_g: float = Field(default=11.0, gt=0.0)
+    color: str | None = None
+
+
+class MotorBodyConfig(Strict):
+    diameter_mm: float = Field(default=28.0, gt=0.0)
+    height_mm: float = Field(default=30.0, gt=0.0)
+    mass_g: float = Field(default=30.0, gt=0.0)
+    color: str | None = None
+
+
+class PropBodyConfig(Strict):
+    diameter_mm: float = Field(default=127.0, gt=0.0)
+    thickness_mm: float = Field(default=5.0, gt=0.0)
+    mass_g: float = Field(default=5.0, gt=0.0)
+    color: str | None = None
+
+
+class CustomMotorConfig(Strict):
+    bf_index: int = Field(ge=1)
+    pos_mm: Vector3
+    axis: Vector3 = (0.0, 0.0, -1.0)
+    spin: Literal["cw", "ccw"]
+
+
 class LayoutConfig(Strict):
-    type: Literal["quad_x"] = "quad_x"
-    motor_spacing_mm: float
+    type: Literal["quad_x", "stretched_x", "custom"] = "quad_x"
+    motor_spacing_mm: float | None = Field(default=None, gt=0.0)
+    length_mm: float | None = Field(default=None, gt=0.0)
+    width_mm: float | None = Field(default=None, gt=0.0)
+    motors: list[CustomMotorConfig] = Field(default_factory=list[CustomMotorConfig])
     props_out: bool = False
+    arm: ArmConfig = Field(default_factory=ArmConfig)
+    motor_body: MotorBodyConfig = Field(default_factory=MotorBodyConfig)
+    prop_body: PropBodyConfig = Field(default_factory=PropBodyConfig)
+
+    @model_validator(mode="after")
+    def fields_match_type(self) -> "LayoutConfig":
+        if self.type == "quad_x" and self.motor_spacing_mm is None:
+            raise ValueError("quad_x needs motor_spacing_mm")
+        if self.type == "stretched_x" and (self.length_mm is None or self.width_mm is None):
+            raise ValueError("stretched_x needs length_mm and width_mm")
+        if self.type == "custom":
+            if self.props_out:
+                raise ValueError("custom layouts give each motor its spin; props_out is not used")
+            indices = sorted(m.bf_index for m in self.motors)
+            if not indices or indices != list(range(1, len(indices) + 1)):
+                raise ValueError("custom motors need bf_index 1..N without gaps")
+            if len(self.motors) > 8:
+                raise ValueError("at most 8 motors")
+        return self
 
 
-class FirstOrderMotorConfig(Strict):
-    model: Literal["first_order"] = "first_order"
-    max_rpm: float
-    time_constant_s: float
-    k_t: float
-    k_q: float
-    k_h: float = 0.0
-    rotor_inertia_kg_m2: float
-
-
-class ImuConfig(Strict):
+class MountConfig(Strict):
+    part: str | None = None
     offset_mm: Vector3 = (0.0, 0.0, 0.0)
+    rot_deg: Vector3 = (0.0, 0.0, 0.0)
+
+
+class CameraMountConfig(MountConfig):
+    name: str
+
+
+class AeroOverrideConfig(Strict):
+    cda_m2: Vector3
+    cop_mm: Vector3 = (0.0, 0.0, 0.0)
 
 
 class AeroConfig(Strict):
-    cda_m2: Vector3
-    cop_mm: Vector3 = (0.0, 0.0, 0.0)
+    cd: float = Field(default=1.0, gt=0.0)
+    override: AeroOverrideConfig | None = None
     k_omega: Vector3 = (5e-4, 5e-4, 5e-4)
 
 
@@ -188,16 +278,41 @@ class ContactConfig(Strict):
     crash_speed_mps: float = 6.0
 
 
+class FirstOrderMotorConfig(Strict):
+    model: Literal["first_order"] = "first_order"
+    max_rpm: float
+    time_constant_s: float
+    k_t: float
+    k_q: float
+    k_h: float = 0.0
+    rotor_inertia_kg_m2: float
+
+
 class DroneConfig(Strict):
     schema_version: Literal[1]
     name: str
-    mass_g: float = Field(gt=0.0)
-    inertia_frd_kg_m2: Matrix3
     layout: LayoutConfig
     motor: FirstOrderMotorConfig
-    imu: ImuConfig = Field(default_factory=ImuConfig)
-    aero: AeroConfig
+    parts: dict[str, Part]
+    imu: MountConfig = Field(default_factory=MountConfig)
+    cameras: list[CameraMountConfig] = Field(default_factory=list[CameraMountConfig])
+    aero: AeroConfig = Field(default_factory=AeroConfig)
     contact: ContactConfig = Field(default_factory=ContactConfig)
+
+    @model_validator(mode="after")
+    def parts_and_mounts_are_consistent(self) -> "DroneConfig":
+        if not self.parts:
+            raise ValueError("parts must not be empty")
+        for name in self.parts:
+            if GENERATED_PART.match(name):
+                raise ValueError(f"part name '{name}' is reserved for generated parts")
+        for label, part in (("imu", self.imu.part), *((c.name, c.part) for c in self.cameras)):
+            if part is not None and part not in self.parts:
+                raise ValueError(f"{label} refers to unknown part '{part}'")
+        names = [c.name for c in self.cameras]
+        if len(set(names)) != len(names):
+            raise ValueError("camera names must be unique")
+        return self
 
 
 class AtmosphereConfig(Strict):

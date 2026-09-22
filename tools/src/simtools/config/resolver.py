@@ -1,5 +1,4 @@
 import json
-import math
 import platform
 import subprocess
 import sys
@@ -18,8 +17,8 @@ from simtools.config.schemas import (
     InputMappingConfig,
     SessionConfig,
 )
+from simtools.modelc.compile import compile_drone, to_json
 
-STANDARD_GRAVITY_MPS2 = 9.80665
 RESOLVED_SCHEMA_VERSION = 1
 
 
@@ -87,64 +86,17 @@ class ResolvedSession:
         return self.logging_root
 
 
-def _quad_x_motors(drone: DroneConfig) -> list[dict[str, Any]]:
-    # Betaflight quad X: 1 rear right CW, 2 front right CCW, 3 rear left CCW, 4 front left CW
-    arm = units.mm_to_m(drone.layout.motor_spacing_mm) / 2.0 / math.sqrt(2.0)
-    corners = [(-arm, arm, 1.0), (arm, arm, -1.0), (-arm, -arm, -1.0), (arm, -arm, 1.0)]
-    motor = drone.motor
-    return [
-        {
-            "bf_index": index + 1,
-            "position_frd_m": [x, y, 0.0],
-            "axis_frd": [0.0, 0.0, -1.0],
-            "spin": -spin if drone.layout.props_out else spin,
-            "rotor_inertia_kg_m2": motor.rotor_inertia_kg_m2,
-            "first_order": {
-                "max_speed_radps": units.rpm_to_rad_per_s(motor.max_rpm),
-                "time_constant_s": motor.time_constant_s,
-                "k_t": motor.k_t,
-                "k_q": motor.k_q,
-                "k_h": motor.k_h,
-            },
-        }
-        for index, (x, y, spin) in enumerate(corners)
-    ]
+def load_drone(path: Path) -> DroneConfig:
+    return _load_model(DroneConfig, path)
 
 
 def resolve_drone(drone: DroneConfig) -> dict[str, Any]:
-    motors = _quad_x_motors(drone)
-    leg_drop = units.mm_to_m(drone.contact.leg_drop_mm)
-    return {
-        "schema_version": RESOLVED_SCHEMA_VERSION,
-        "name": drone.name,
-        "mass_kg": units.g_to_kg(drone.mass_g),
-        "inertia_frd_kg_m2": [list(row) for row in drone.inertia_frd_kg_m2],
-        "motors": motors,
-        "imu": {"position_frd_m": [units.mm_to_m(v) for v in drone.imu.offset_mm]},
-        "aero": {
-            "cda_frd_m2": list(drone.aero.cda_m2),
-            "cop_frd_m": [units.mm_to_m(v) for v in drone.aero.cop_mm],
-            "k_omega": list(drone.aero.k_omega),
-        },
-        "contact": {
-            "points_frd_m": [
-                [m["position_frd_m"][0], m["position_frd_m"][1], leg_drop] for m in motors
-            ],
-            "stiffness_n_per_m": drone.contact.stiffness_n_per_m,
-            "damping_n_s_per_m": drone.contact.damping_n_s_per_m,
-            "friction": drone.contact.friction,
-            "friction_regularization_mps": drone.contact.friction_regularization_mps,
-            "crash_speed_mps": drone.contact.crash_speed_mps,
-        },
-    }
+    return to_json(compile_drone(drone))
 
 
 def hover_throttle_us(drone: DroneConfig) -> float:
     """Stick position whose motor command balances weight if Betaflight passed it through."""
-    thrust_per_motor = units.g_to_kg(drone.mass_g) * STANDARD_GRAVITY_MPS2 / 4.0
-    speed = math.sqrt(thrust_per_motor / drone.motor.k_t)
-    command = speed / units.rpm_to_rad_per_s(drone.motor.max_rpm)
-    return 1000.0 + 1000.0 * command
+    return 1000.0 + 1000.0 * compile_drone(drone).hover_command()
 
 
 def resolve_session(session_path: Path, base_dir: Path) -> ResolvedSession:
