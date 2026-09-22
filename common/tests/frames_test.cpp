@@ -55,6 +55,20 @@ TEST(FramesTest, YawRight90DegPointsGodotNoseEast) {
   EXPECT_TRUE(VecNear(q_godot * nose_godotbody, {1, 0, 0}));
 }
 
+TEST(FramesTest, EulerAnglesRecoverSingleAxisRotations) {
+  const double a = 0.3;
+  const auto roll =
+      frames::euler_zyx_from_q(Eigen::Quaterniond(Eigen::AngleAxisd(a, Vector3d::UnitX())));
+  const auto pitch =
+      frames::euler_zyx_from_q(Eigen::Quaterniond(Eigen::AngleAxisd(a, Vector3d::UnitY())));
+  const auto yaw =
+      frames::euler_zyx_from_q(Eigen::Quaterniond(Eigen::AngleAxisd(a, Vector3d::UnitZ())));
+  EXPECT_NEAR(roll.roll_rad, a, kTol);
+  EXPECT_NEAR(pitch.pitch_rad, a, kTol);
+  EXPECT_NEAR(yaw.yaw_rad, a, kTol);
+  EXPECT_NEAR(yaw.roll_rad + yaw.pitch_rad + roll.pitch_rad + roll.yaw_rad, 0.0, kTol);
+}
+
 TEST(FramesTest, QuaternionConversionMatchesMatrixConjugation) {
   const Eigen::Quaterniond q_ned_from_frd = Eigen::Quaterniond(0.8, 0.1, -0.3, 0.5).normalized();
   const Eigen::Matrix3d c = frames::R_godot_from_ned();

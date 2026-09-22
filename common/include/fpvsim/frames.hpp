@@ -1,5 +1,8 @@
 #pragma once
 
+#include <algorithm>
+#include <cmath>
+
 #include <Eigen/Core>
 #include <Eigen/Geometry>
 
@@ -42,6 +45,24 @@ inline Eigen::Vector3d gltf_from_frd(const Eigen::Vector3d& v_frd) {
 inline Eigen::Quaterniond q_godot_from_godotbody(const Eigen::Quaterniond& q_ned_from_frd) {
   const Eigen::Vector3d v = R_godot_from_ned() * q_ned_from_frd.vec();
   return {q_ned_from_frd.w(), v.x(), v.y(), v.z()};
+}
+
+struct EulerZyx {
+  double roll_rad;
+  double pitch_rad;
+  double yaw_rad;
+};
+
+// Aerospace roll, pitch, yaw of q_ned_from_frd (yaw from North, positive to the East)
+inline EulerZyx euler_zyx_from_q(const Eigen::Quaterniond& q) {
+  const double w = q.w();
+  const double x = q.x();
+  const double y = q.y();
+  const double z = q.z();
+  const double sin_pitch = std::clamp(2.0 * (w * y - z * x), -1.0, 1.0);
+  return {.roll_rad = std::atan2(2.0 * (w * x + y * z), 1.0 - 2.0 * (x * x + y * y)),
+          .pitch_rad = std::asin(sin_pitch),
+          .yaw_rad = std::atan2(2.0 * (w * z + x * y), 1.0 - 2.0 * (y * y + z * z))};
 }
 
 }  // namespace fpvsim::frames
