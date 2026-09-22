@@ -41,7 +41,7 @@
       "rotor_inertia_kg_m2": 3e-06,
       "motor": {
         "model": "dc",
-        "max_speed_radps": 2499.974713971638,
+        "max_speed_radps": 3355.5544662186867,
         "time_constant_s": 0.02,
         "reference_voltage_v": 24.0,
         "kv_radps_per_v": 198.96753472735355,
@@ -78,7 +78,7 @@
       "rotor_inertia_kg_m2": 3e-06,
       "motor": {
         "model": "dc",
-        "max_speed_radps": 2499.974713971638,
+        "max_speed_radps": 3355.5544662186867,
         "time_constant_s": 0.02,
         "reference_voltage_v": 24.0,
         "kv_radps_per_v": 198.96753472735355,
@@ -115,7 +115,7 @@
       "rotor_inertia_kg_m2": 3e-06,
       "motor": {
         "model": "dc",
-        "max_speed_radps": 2499.974713971638,
+        "max_speed_radps": 3355.5544662186867,
         "time_constant_s": 0.02,
         "reference_voltage_v": 24.0,
         "kv_radps_per_v": 198.96753472735355,
@@ -152,7 +152,7 @@
       "rotor_inertia_kg_m2": 3e-06,
       "motor": {
         "model": "dc",
-        "max_speed_radps": 2499.974713971638,
+        "max_speed_radps": 3355.5544662186867,
         "time_constant_s": 0.02,
         "reference_voltage_v": 24.0,
         "kv_radps_per_v": 198.96753472735355,

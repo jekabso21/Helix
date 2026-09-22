@@ -40,8 +40,14 @@ func _render() -> void:
 		var motors: Array = _telemetry["motors"]
 		var parts: PackedStringArray = []
 		for motor: Dictionary in motors:
-			parts.append("%d%% %.0f" % [roundi(motor["command"] * 100.0), motor["rpm"]])
+			parts.append("%d%% %.0f %.1fA" % [roundi(motor["command"] * 100.0), motor["rpm"], motor.get("current_a", 0.0)])
 		lines.append("[b]Motors[/b]  " + "  |  ".join(parts))
+		var battery: Variant = _telemetry.get("battery")
+		if battery is Dictionary:
+			lines.append("[b]Battery[/b]  %.2f V  %.1f A  %.0f mAh  %.0f%%%s" % [
+				battery["voltage_v"], battery["current_a"], battery["consumed_mah"],
+				100.0 * float(battery["soc"]), "  CUTOFF" if battery.get("cutoff", false) else ""
+			])
 		lines.append("[b]Sim[/b]  %s  overruns %d%s%s" % [
 			sim["mode"], sim["overruns"],
 			"  PAUSED" if sim["paused"] else "",

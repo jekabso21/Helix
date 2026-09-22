@@ -130,6 +130,7 @@ nlohmann::json telemetry_json(const sim::Snapshot& s, std::int64_t physics_rate_
           {"sim",
            {{"mode", "realtime"},
             {"physics_rate_hz", physics_rate_hz},
+            {"sim_time_ns", s.sim_time_ns},
             {"paused", s.paused},
             {"crashed", s.crashed},
             {"overruns", s.overruns},

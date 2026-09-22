@@ -1,0 +1,13 @@
+# The reference quad on a worn, half-charged 850 mAh pack: punch-outs sag visibly
+extends: reference_5in.yaml
+name: reference_5in_tired_pack
+battery:
+  schema_version: 1
+  cells: 6
+  capacity_mah: 850
+  cell_resistance_mohm: 18
+  connector_resistance_mohm: 3
+  temperature_c: 10
+  avionics_current_a: 0.8
+  esc_cutoff_v: 15.0
+  initial_soc: 0.6

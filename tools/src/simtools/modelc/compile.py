@@ -193,7 +193,9 @@ def to_json(model: CompiledDrone) -> dict[str, Any]:
                 "rotor_inertia_kg_m2": motor.rotor_inertia_kg_m2,
                 "motor": {
                     "model": motor.model,
-                    "max_speed_radps": units.rpm_to_rad_per_s(motor.max_rpm or 0.0),
+                    "max_speed_radps": model.full_throttle_speed_radps()
+                    if motor.model == "dc"
+                    else units.rpm_to_rad_per_s(motor.max_rpm or 0.0),
                     "time_constant_s": motor.time_constant_s,
                     "reference_voltage_v": motor.reference_voltage_v,
                     "kv_radps_per_v": kv_radps_per_v(motor),

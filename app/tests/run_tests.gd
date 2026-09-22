@@ -9,6 +9,7 @@ func _initialize() -> void:
 	_test_frames()
 	_test_render_state_golden()
 	_test_drone_glb()
+	_test_plot_series()
 	print("%d checks, %d failures" % [checks, failures])
 	quit(1 if failures > 0 else 0)
 
@@ -76,7 +77,19 @@ func _test_drone_glb() -> void:
 	check(drone.part_position_body("motor2").z < 0.0 and drone.part_position_body("motor2").x > 0.0, "motor 2 is front right")
 	check(drone.model.get("motors", []).size() == 4, "compiled json read")
 	var state := RenderState.new()
-	state.motor_rpm = PackedFloat32Array([23873.0, 0.0, 11936.5, 0.0])
+	var max_rpm: float = drone.model["motors"][0]["motor"]["max_speed_radps"] * 60.0 / TAU
+	state.motor_rpm = PackedFloat32Array([max_rpm, 0.0, max_rpm / 2.0, 0.0])
 	var f: PackedFloat32Array = drone.thrust_fractions(state)
 	check(absf(f[0] - 1.0) < 1e-3 and f[1] == 0.0 and absf(f[2] - 0.25) < 1e-3, "thrust fractions %s" % [f])
 	drone.queue_free()
+
+
+func _test_plot_series() -> void:
+	var s := PlotSeries.new(10.0)
+	for i in 30:
+		s.push(float(i), float(i) * 0.5)
+	check(s.size() == 11, "window keeps the last 10 s (got %d samples)" % s.size())
+	check(s.times[0] == 19.0 and s.latest() == 14.5, "oldest kept sample is t=19, latest value 14.5")
+	check(s.min_value() == 9.5 and s.max_value() == 14.5, "min and max over the window")
+	s.push(3.0, 1.0)
+	check(s.size() == 1 and s.latest() == 1.0, "time going backwards clears the window")

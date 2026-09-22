@@ -185,8 +185,8 @@ func thrust_fractions(state: RenderState) -> PackedFloat32Array:
 	var out := PackedFloat32Array()
 	var motors: Array = model.get("motors", [])
 	for i in motors.size():
-		var fo: Dictionary = (motors[i] as Dictionary)["first_order"]
-		var max_speed: float = fo["max_speed_radps"]
+		var motor: Dictionary = (motors[i] as Dictionary)["motor"]
+		var max_speed: float = motor["max_speed_radps"]  # full-throttle steady speed at a fresh pack
 		var speed := 0.0
 		if i < state.motor_rpm.size():
 			speed = state.motor_rpm[i] * RPM_TO_RADPS

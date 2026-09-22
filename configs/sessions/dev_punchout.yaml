@@ -1,0 +1,4 @@
+# Fly the reference quad on a tired pack; watch the battery strip in the live plots on punch-outs
+extends: dev_gamepad.yaml
+name: dev_punchout
+drone: configs/drones/reference_5in_tired_pack.yaml

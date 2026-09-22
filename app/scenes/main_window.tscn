@@ -1,4 +1,4 @@
-[gd_scene load_steps=9 format=3]
+[gd_scene load_steps=10 format=3]
 
 [ext_resource type="Script" path="res://ui/main_window.gd" id="1"]
 [ext_resource type="PackedScene" path="res://ui/placeholder_panel.tscn" id="2"]
@@ -8,6 +8,7 @@
 [ext_resource type="PackedScene" path="res://ui/telemetry_panel.tscn" id="6"]
 [ext_resource type="PackedScene" path="res://ui/input_panel.tscn" id="7"]
 [ext_resource type="PackedScene" path="res://ui/drone_panel.tscn" id="8"]
+[ext_resource type="PackedScene" path="res://ui/plots_panel.tscn" id="9"]
 
 [node name="MainWindow" type="Control"]
 layout_mode = 3
@@ -134,8 +135,6 @@ world_view_path = NodePath("../../MainView")
 [node name="Telemetry" parent="Margin/Layout/Body/Center/RightDock" instance=ExtResource("6")]
 layout_mode = 2
 
-[node name="Plots" parent="Margin/Layout" instance=ExtResource("2")]
-custom_minimum_size = Vector2(0, 70)
+[node name="Plots" parent="Margin/Layout" instance=ExtResource("9")]
 layout_mode = 2
 size_flags_vertical = 0
-title = "Live plots (last 10 s): motor outputs | body rates | battery"
