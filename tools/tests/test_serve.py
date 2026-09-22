@@ -99,6 +99,19 @@ def test_errors_use_the_shared_codes(server: Server) -> None:
     client.close()
 
 
+def test_shutdown_stops_the_server() -> None:
+    server = Server(("127.0.0.1", free_port()), Supervisor(REPO_ROOT))
+    thread = threading.Thread(
+        target=server.serve_forever, kwargs={"poll_interval": 0.05}, daemon=True
+    )
+    thread.start()
+    client = LineClient(server.server_address[1])
+    assert client.request("shutdown")["ok"]
+    thread.join(timeout=5.0)
+    assert not thread.is_alive()
+    client.close()
+
+
 def test_status_subscription_sends_the_current_status_first(server: Server) -> None:
     client = LineClient(server.server_address[1])
     result = client.request("subscribe", {"topic": "status"})["result"]

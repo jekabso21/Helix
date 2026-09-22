@@ -322,6 +322,9 @@ class Handler(socketserver.StreamRequestHandler):
                 return self._ok(request_id, supervisor.start(str(params["path"]), sys.argv)), None
             if method == "stop":
                 return self._ok(request_id, supervisor.stop()), None
+            if method == "shutdown":
+                threading.Thread(target=cast("Server", self.server).close, daemon=True).start()
+                return self._ok(request_id, {"ok": True}), None
             if method == "status":
                 return self._ok(request_id, supervisor.status()), None
             if method == "tail_log":
@@ -378,10 +381,12 @@ class Server(socketserver.ThreadingTCPServer):
         self.stopping = False
 
     def close(self) -> None:
+        if self.stopping:
+            return
         self.stopping = True
+        self.supervisor.shutdown()
         self.shutdown()
         self.server_close()
-        self.supervisor.shutdown()
 
 
 def serve_forever(base_dir: Path, host: str = HOST, port: int = 7740) -> None:
