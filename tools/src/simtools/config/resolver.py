@@ -188,6 +188,12 @@ def resolve_session(session_path: Path, base_dir: Path) -> ResolvedSession:
             "rc_rate_hz": session.input.rc_rate_hz,
             "altitude_hold": hold,
         },
+        "control_api": {"host": session.control_api.host, "port": session.control_api.port},
+        "app": {
+            "host": session.app.host,
+            "port": session.app.port,
+            "state_rate_hz": session.app.state_rate_hz,
+        },
         "logging": {"rate_hz": session.logging.rate_hz, "truth_csv": "../data/truth.csv"},
         "drone": "drone.json",
     }

@@ -56,6 +56,18 @@ class InputConfig(Strict):
     altitude_hold: AltitudeHoldConfig = Field(default_factory=AltitudeHoldConfig)
 
 
+class ControlApiConfig(Strict):
+    host: str = "127.0.0.1"
+    port: int = 7700
+
+
+class AppConfig(Strict):
+    enabled: bool = True
+    host: str = "127.0.0.1"
+    port: int = 7710
+    state_rate_hz: int = 100
+
+
 class LoggingConfig(Strict):
     rate_hz: int = 200
     root: str = "runs"
@@ -75,6 +87,8 @@ class SessionConfig(Strict):
     origin: OriginConfig = Field(default_factory=OriginConfig)
     spawn: SpawnConfig = Field(default_factory=SpawnConfig)
     input: InputConfig = Field(default_factory=InputConfig)
+    control_api: ControlApiConfig = Field(default_factory=ControlApiConfig)
+    app: AppConfig = Field(default_factory=AppConfig)
     logging: LoggingConfig = Field(default_factory=LoggingConfig)
 
     @model_validator(mode="after")
@@ -86,6 +100,7 @@ class SessionConfig(Strict):
         for name, rate in (
             ("input.rc_rate_hz", self.input.rc_rate_hz),
             ("logging.rate_hz", self.logging.rate_hz),
+            ("app.state_rate_hz", self.app.state_rate_hz),
         ):
             if rate <= 0 or self.physics_rate_hz % rate != 0:
                 raise ValueError(f"{name} must divide physics_rate_hz")
