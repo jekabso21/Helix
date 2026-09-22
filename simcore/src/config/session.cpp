@@ -155,6 +155,17 @@ SessionConfig parse_session(const std::string& json_text, const std::filesystem:
                              .integral_limit_us = hold.at("integral_limit_us").number(),
                              .arm_delay_s = hold.at("arm_delay_s").number()};
 
+  const Reader control_api = root.at("control_api");
+  cfg.control_api = {.host = control_api.at("host").get<std::string>(),
+                     .port = control_api.at("port").get<std::uint16_t>()};
+  const Reader app = root.at("app");
+  cfg.app = {.host = app.at("host").get<std::string>(),
+             .port = app.at("port").get<std::uint16_t>(),
+             .state_rate_hz = app.at("state_rate_hz").get<std::int64_t>()};
+  if (cfg.app.state_rate_hz <= 0 || cfg.physics_rate_hz % cfg.app.state_rate_hz != 0) {
+    throw std::runtime_error("app.state_rate_hz must divide physics_rate_hz");
+  }
+
   const Reader logging = root.at("logging");
   cfg.logging.rate_hz = logging.at("rate_hz").get<std::int64_t>();
   if (cfg.logging.rate_hz <= 0 || cfg.physics_rate_hz % cfg.logging.rate_hz != 0) {

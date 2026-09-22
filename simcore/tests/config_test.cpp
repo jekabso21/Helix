@@ -20,6 +20,8 @@ const char* kSession = R"({
                               "ki_us_per_m_s": 20.0, "kd_us_per_mps": 80.0,
                               "hover_throttle_us": 1350.0, "integral_limit_us": 300.0,
                               "arm_delay_s": 6.0}},
+  "control_api": {"host": "127.0.0.1", "port": 7700},
+  "app": {"host": "127.0.0.1", "port": 7710, "state_rate_hz": 100},
   "logging": {"rate_hz": 200, "truth_csv": "truth.csv"},
   "drone": "drone.json"
 })";

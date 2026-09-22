@@ -13,8 +13,10 @@ target_include_directories(fpvsim_simcore_models PUBLIC include)
 target_link_libraries(fpvsim_simcore_models PUBLIC fpvsim::common PRIVATE fpvsim::options)
 
 add_library(fpvsim_simcore STATIC
+    src/api/protocol.cpp
     src/bridge/betaflight.cpp
     src/config/session.cpp
+    src/io/io_thread.cpp
     src/log/csv_log.cpp
     src/net/udp_socket.cpp
     src/pilot/altitude_hold.cpp

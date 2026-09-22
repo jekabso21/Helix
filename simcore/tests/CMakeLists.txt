@@ -6,10 +6,12 @@ fpvsim_add_test(simcore_model_tests
     motor_test.cpp
     propulsion_test.cpp
     rigid_body_test.cpp
+    step_stats_test.cpp
     LIBS fpvsim::simcore_models)
 
 fpvsim_add_test(simcore_tests
     altitude_hold_test.cpp
+    api_protocol_test.cpp
     bridge_test.cpp
     config_test.cpp
     vehicle_test.cpp

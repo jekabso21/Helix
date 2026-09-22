@@ -27,12 +27,19 @@ int run(int argc, char** argv) {
   spdlog::info("simcore {} starting: {} Hz physics, {} s, Betaflight at {}", fpvsim::kVersion,
                session.physics_rate_hz, session.duration_s, session.betaflight.host);
 
-  const fpvsim::sim::RunSummary summary = fpvsim::sim::run_realtime(session, drone);
+  const nlohmann::json info = {
+      {"version", fpvsim::kVersion}, {"api_version", 1},
+      {"mode", "realtime"},          {"physics_rate_hz", session.physics_rate_hz},
+      {"seed", session.seed},        {"betaflight_protocol", "2026.6.2"},
+      {"session", session_path}};
+  const fpvsim::sim::RunSummary summary = fpvsim::sim::run_realtime(session, drone, info);
   const nlohmann::json report = {{"steps", summary.steps},
                                  {"overruns", summary.overruns},
                                  {"motor_packets", summary.motor_packets},
                                  {"malformed_packets", summary.malformed_packets},
                                  {"dropped_log_rows", summary.dropped_log_rows},
+                                 {"render_states_sent", summary.render_states_sent},
+                                 {"api_requests", summary.api_requests},
                                  {"final_height_m", summary.final_height_m},
                                  {"crashed", summary.crashed}};
   spdlog::info("run finished: {}", report.dump());

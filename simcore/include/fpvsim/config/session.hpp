@@ -30,6 +30,17 @@ struct InputConfig {
   pilot::AltitudeHoldParams altitude_hold;
 };
 
+struct ControlApiConfig {
+  std::string host;
+  std::uint16_t port;
+};
+
+struct AppConfig {
+  std::string host;
+  std::uint16_t port;
+  std::int64_t state_rate_hz;
+};
+
 struct LoggingConfig {
   std::int64_t rate_hz;
   std::filesystem::path truth_csv;
@@ -44,6 +55,8 @@ struct SessionConfig {
   env::AtmosphereParams atmosphere;
   Spawn spawn;
   InputConfig input;
+  ControlApiConfig control_api;
+  AppConfig app;
   LoggingConfig logging;
   std::filesystem::path drone_json;
 };
