@@ -1,0 +1,9 @@
+# Placeholder 6S 1100 mAh LiPo; ocv_curve_v and temperature_factor use the schema defaults
+schema_version: 1
+cells: 6
+capacity_mah: 1100
+cell_resistance_mohm: 8
+connector_resistance_mohm: 2
+temperature_c: 25
+avionics_current_a: 0.8
+esc_cutoff_v: 15.0

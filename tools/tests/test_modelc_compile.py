@@ -21,7 +21,10 @@ REFERENCE = REPO_ROOT / "configs/drones/reference_5in.yaml"
 
 
 def reference_yaml() -> dict[str, Any]:
-    return load_yaml(REFERENCE)
+    data = load_yaml(REFERENCE)
+    for key in ("motor", "prop", "battery"):
+        data[key] = load_yaml(REPO_ROOT / data[key])
+    return data
 
 
 def minimal(**layout: Any) -> dict[str, Any]:
@@ -30,12 +33,14 @@ def minimal(**layout: Any) -> dict[str, Any]:
         "name": "t",
         "layout": {"type": "quad_x", "motor_spacing_mm": 200.0, **layout},
         "motor": {
-            "max_rpm": 20000,
-            "time_constant_s": 0.02,
-            "k_t": 1e-6,
-            "k_q": 1e-8,
+            "model": "first_order",
+            "kv_rpm_per_v": 1900,
+            "winding_resistance_ohm": 0.18,
             "rotor_inertia_kg_m2": 1e-6,
+            "max_rpm": 20000,
         },
+        "prop": {"diameter_mm": 127, "pitch_mm": 109, "k_t": 1e-6, "k_q": 1e-8},
+        "battery": {"cells": 6, "capacity_mah": 1000, "cell_resistance_mohm": 8},
         "parts": {"body": {"shape": "box", "size_mm": [100, 40, 20], "mass_g": 300}},
     }
 

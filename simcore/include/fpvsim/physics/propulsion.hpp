@@ -25,7 +25,7 @@ Loads propulsion_loads(const std::array<MotorMount, kMaxMotors>& mounts,
 
 // Rotor momentum drag: each rotor pulls against the airspeed component in its plane
 Loads rotor_drag_loads(const std::array<MotorMount, kMaxMotors>& mounts,
-                       const std::array<MotorParams, kMaxMotors>& motors,
+                       const std::array<PropParams, kMaxMotors>& props,
                        const std::array<MotorOutput, kMaxMotors>& outputs, std::size_t motor_count,
                        const Eigen::Vector3d& air_velocity_frd,
                        const Eigen::Vector3d& angular_rate_frd);

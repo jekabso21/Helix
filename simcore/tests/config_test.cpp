@@ -27,16 +27,32 @@ const char* kSession = R"({
 })";
 
 const char* kDrone = R"({
-  "schema_version": 1, "mass_kg": 0.5,
+  "schema_version": 2, "mass_kg": 0.5,
   "inertia_frd_kg_m2": [[0.003, 0, 0], [0, 0.003, 0], [0, 0, 0.005]],
   "motors": [
     {"bf_index": 1, "position_frd_m": [-0.08, 0.08, 0], "axis_frd": [0, 0, -1], "spin": 1,
-     "rotor_inertia_kg_m2": 6e-6,
-     "first_order": {"max_speed_radps": 2500, "time_constant_s": 0.03, "k_t": 1.5e-6, "k_q": 2e-8, "k_h": 6e-5}},
+"rotor_inertia_kg_m2": 6e-6,
+     "motor": {"model": "first_order", "max_speed_radps": 2500, "time_constant_s": 0.03, "reference_voltage_v": 24.0,
+               "kv_radps_per_v": 0, "resistance_ohm": 0, "no_load_current_a": 0, "brake_current_a": 0,
+               "rotor_inertia_kg_m2": 6e-6, "pole_pairs": 7},
+     "prop": {"k_t": 1.5e-6, "k_q": 2e-8, "rho_ref_kg_m3": 1.225, "radius_m": 0.0635, "pitch_m": 0.109,
+              "inflow_coefficient": 0, "rotor_drag_coefficient": 6e-5, "blades": 3}},
     {"bf_index": 2, "position_frd_m": [0.08, 0.08, 0], "axis_frd": [0, 0, -1], "spin": -1,
-     "rotor_inertia_kg_m2": 6e-6,
-     "first_order": {"max_speed_radps": 2500, "time_constant_s": 0.03, "k_t": 1.5e-6, "k_q": 2e-8, "k_h": 6e-5}}
+"rotor_inertia_kg_m2": 6e-6,
+     "motor": {"model": "first_order", "max_speed_radps": 2500, "time_constant_s": 0.03, "reference_voltage_v": 24.0,
+               "kv_radps_per_v": 0, "resistance_ohm": 0, "no_load_current_a": 0, "brake_current_a": 0,
+               "rotor_inertia_kg_m2": 6e-6, "pole_pairs": 7},
+     "prop": {"k_t": 1.5e-6, "k_q": 2e-8, "rho_ref_kg_m3": 1.225, "radius_m": 0.0635, "pitch_m": 0.109,
+              "inflow_coefficient": 0, "rotor_drag_coefficient": 6e-5, "blades": 3}}
   ],
+  "battery": {"cells": 6, "capacity_ah": 1.1, "cell_resistance_ohm": 0.008, "connector_resistance_ohm": 0.002,
+              "avionics_current_a": 0.8, "esc_cutoff_v": 15.0, "initial_soc": 1.0, "rc_resistance_ohm": 0, "rc_capacitance_f": 0,
+              "ocv_v": [3.3, 3.6, 3.7, 3.75, 3.79, 3.83, 3.87, 3.93, 4.0, 4.1, 4.2]},
+  "sensors": {"imu": {"gyro_noise_density_radps_rthz": 0, "gyro_bias_walk_radps2_rthz": 0, "gyro_range_radps": 0,
+                      "accel_noise_density_mps2_rthz": 0, "accel_bias_walk_mps3_rthz": 0, "accel_range_mps2": 0,
+                      "vibration_imbalance_mps2_per_radps2": 0, "vibration_harmonic2": 0, "vibration_blade_pass": 0,
+                      "vibration_gyro_gain_radps_per_mps2": 0},
+              "baro": {"noise_pa": 0, "bias_pa": 0}},
   "imu": {"position_frd_m": [0, 0, 0]},
   "aero": {"cda_frd_m2": [0.01, 0.01, 0.02], "cop_frd_m": [0, 0, 0], "k_omega": [5e-4, 5e-4, 5e-4]},
   "contact": {"points_frd_m": [[0.08, 0.08, 0.02], [-0.08, -0.08, 0.02]],
@@ -110,7 +126,10 @@ TEST(ConfigTest, ParsesADroneInBetaflightMotorOrder) {
   const fpvsim::sim::VehicleParams drone = config::parse_drone(kDrone, "drone.json");
   EXPECT_EQ(drone.motor_count, 2U);
   EXPECT_DOUBLE_EQ(drone.mounts[1].spin, -1.0);
-  EXPECT_DOUBLE_EQ(drone.motors[0].thrust_coefficient, 1.5e-6);
+  EXPECT_DOUBLE_EQ(drone.props[0].thrust_coefficient, 1.5e-6);
+  EXPECT_EQ(drone.motors[0].model, fpvsim::physics::MotorModel::kFirstOrder);
+  EXPECT_EQ(drone.battery.cells, 6);
+  EXPECT_DOUBLE_EQ(drone.battery.ocv_v[10], 4.2);
   EXPECT_EQ(drone.contact.point_count, 2U);
   EXPECT_DOUBLE_EQ(drone.crash_speed_mps, 6.0);
   EXPECT_NEAR(drone.mass.inertia_frd_inverse(2, 2), 200.0, 1e-9);

@@ -17,6 +17,7 @@ namespace {
 using nlohmann::json;
 
 inline constexpr int kSchemaVersion = 1;
+constexpr int kDroneSchemaVersion = 2;
 
 class Reader {
  public:
@@ -114,9 +115,9 @@ std::string read_file(const std::filesystem::path& path) {
   return buffer.str();
 }
 
-void check_schema(const Reader& root) {
+void check_schema(const Reader& root, int expected = kSchemaVersion) {
   const int version = root.at("schema_version").get<int>();
-  if (version != kSchemaVersion) {
+  if (version != expected) {
     throw std::runtime_error("unsupported schema_version " + std::to_string(version));
   }
 }
@@ -203,7 +204,7 @@ SessionConfig parse_session(const std::string& json_text, const std::filesystem:
 sim::VehicleParams parse_drone(const std::string& json_text, const std::filesystem::path& path) {
   const json document = parse_text(json_text, path);
   const Reader root(document, path.filename().string());
-  check_schema(root);
+  check_schema(root, kDroneSchemaVersion);
   sim::VehicleParams params{};
   params.mass = physics::make_mass_properties(root.at("mass_kg").number(),
                                               root.at("inertia_frd_kg_m2").matrix3());
@@ -222,14 +223,71 @@ sim::VehicleParams parse_drone(const std::string& json_text, const std::filesyst
     params.mounts[i] = {.position_frd = motor.at("position_frd_m").vector3(),
                         .axis_frd = motor.at("axis_frd").vector3().normalized(),
                         .spin = motor.at("spin").number()};
-    const Reader fo = motor.at("first_order");
-    params.motors[i] = {.max_speed_radps = fo.at("max_speed_radps").number(),
-                        .time_constant_s = fo.at("time_constant_s").number(),
-                        .thrust_coefficient = fo.at("k_t").number(),
-                        .torque_coefficient = fo.at("k_q").number(),
-                        .rotor_inertia_kg_m2 = motor.at("rotor_inertia_kg_m2").number(),
-                        .rotor_drag_coefficient = fo.at("k_h").number()};
+    const Reader m = motor.at("motor");
+    const auto model_name = m.at("model").get<std::string>();
+    if (model_name != "first_order" && model_name != "dc") {
+      throw std::runtime_error("motor.model must be first_order or dc");
+    }
+    params.motors[i] = {
+        .model = model_name == "dc" ? physics::MotorModel::kDc : physics::MotorModel::kFirstOrder,
+        .max_speed_radps = m.at("max_speed_radps").number(),
+        .time_constant_s = m.at("time_constant_s").number(),
+        .reference_voltage_v = m.at("reference_voltage_v").number(),
+        .kv_radps_per_v = m.at("kv_radps_per_v").number(),
+        .resistance_ohm = m.at("resistance_ohm").number(),
+        .no_load_current_a = m.at("no_load_current_a").number(),
+        .brake_current_a = m.at("brake_current_a").number(),
+        .rotor_inertia_kg_m2 = m.at("rotor_inertia_kg_m2").number(),
+        .pole_pairs = m.at("pole_pairs").get<int>()};
+    const Reader p = motor.at("prop");
+    params.props[i] = {.thrust_coefficient = p.at("k_t").number(),
+                       .torque_coefficient = p.at("k_q").number(),
+                       .reference_density_kg_m3 = p.at("rho_ref_kg_m3").number(),
+                       .radius_m = p.at("radius_m").number(),
+                       .pitch_m = p.at("pitch_m").number(),
+                       .inflow_coefficient = p.at("inflow_coefficient").number(),
+                       .rotor_drag_coefficient = p.at("rotor_drag_coefficient").number(),
+                       .blades = p.at("blades").get<int>()};
   }
+
+  const Reader battery = root.at("battery");
+  params.battery = {.cells = battery.at("cells").get<int>(),
+                    .capacity_ah = battery.at("capacity_ah").number(),
+                    .cell_resistance_ohm = battery.at("cell_resistance_ohm").number(),
+                    .connector_resistance_ohm = battery.at("connector_resistance_ohm").number(),
+                    .avionics_current_a = battery.at("avionics_current_a").number(),
+                    .esc_cutoff_v = battery.at("esc_cutoff_v").number(),
+                    .initial_soc = battery.at("initial_soc").number(),
+                    .rc_resistance_ohm = battery.at("rc_resistance_ohm").number(),
+                    .rc_capacitance_f = battery.at("rc_capacitance_f").number(),
+                    .ocv_v = {}};
+  const Reader ocv = battery.at("ocv_v");
+  if (ocv.size() != physics::kOcvPoints) {
+    throw std::runtime_error("battery.ocv_v: expected " + std::to_string(physics::kOcvPoints) +
+                             " values");
+  }
+  for (std::size_t i = 0; i < physics::kOcvPoints; ++i) {
+    params.battery.ocv_v[i] = ocv.index(i).number();
+  }
+
+  const Reader imu_noise = root.at("sensors").at("imu");
+  const Reader baro = root.at("sensors").at("baro");
+  // sample rate and seed come from the session; the loop fills them before building the vehicle
+  params.imu_noise = {
+      .sample_rate_hz = 0.0,
+      .gyro_noise_density = imu_noise.at("gyro_noise_density_radps_rthz").number(),
+      .gyro_bias_walk = imu_noise.at("gyro_bias_walk_radps2_rthz").number(),
+      .gyro_range_radps = imu_noise.at("gyro_range_radps").number(),
+      .accel_noise_density = imu_noise.at("accel_noise_density_mps2_rthz").number(),
+      .accel_bias_walk = imu_noise.at("accel_bias_walk_mps3_rthz").number(),
+      .accel_range_mps2 = imu_noise.at("accel_range_mps2").number(),
+      .vibration_imbalance = imu_noise.at("vibration_imbalance_mps2_per_radps2").number(),
+      .vibration_harmonic2 = imu_noise.at("vibration_harmonic2").number(),
+      .vibration_blade_pass = imu_noise.at("vibration_blade_pass").number(),
+      .vibration_gyro_gain = imu_noise.at("vibration_gyro_gain_radps_per_mps2").number(),
+      .baro_noise_pa = baro.at("noise_pa").number(),
+      .baro_bias_pa = baro.at("bias_pa").number(),
+      .seed = 0};
 
   const Reader aero = root.at("aero");
   params.aero = {.drag_area_frd_m2 = aero.at("cda_frd_m2").vector3(),

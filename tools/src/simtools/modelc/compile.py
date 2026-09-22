@@ -1,16 +1,18 @@
+import math
 from dataclasses import dataclass
+from itertools import pairwise
 from typing import Any
 
 import numpy as np
 
 from simtools.config import units
-from simtools.config.schemas import DroneConfig, MountConfig
+from simtools.config.schemas import BatteryConfig, DroneConfig, MotorConfig, MountConfig, PropConfig
 from simtools.modelc.frames import quaternion_wxyz_from_rotation
 from simtools.modelc.mass import MassProperties, Matrix, Vector, combine, rotation_frd_from_part
 from simtools.modelc.parts import MotorPlacement, PlacedPart, all_parts, motor_placements
 
 STANDARD_GRAVITY_MPS2 = 9.80665
-COMPILED_SCHEMA_VERSION = 1
+COMPILED_SCHEMA_VERSION = 2
 
 
 @dataclass(frozen=True)
@@ -39,9 +41,17 @@ class CompiledDrone:
     def cg_from_origin_frd_m(self) -> Vector:
         return self.mass.cg_frd_m
 
+    def bus_voltage_v(self) -> float:
+        b = self.config.battery
+        return b.cells * _ocv(b)
+
+    def full_throttle_speed_radps(self) -> float:
+        """Steady no-inflow speed at full throttle and the fresh-pack voltage."""
+        return steady_speed_radps(self.config.motor, self.config.prop, 1.0, self.bus_voltage_v())
+
     def max_thrust_per_motor_n(self) -> float:
-        m = self.config.motor
-        return m.k_t * units.rpm_to_rad_per_s(m.max_rpm) ** 2
+        w = self.full_throttle_speed_radps()
+        return self.config.prop.k_t * w * w
 
     def static_hover_thrust_n(self) -> list[float]:
         """Minimum-norm motor thrusts that balance weight with zero roll and pitch moment."""
@@ -58,8 +68,51 @@ class CompiledDrone:
     def hover_command(self) -> float:
         """Motor command whose steady-state thrust per motor balances weight on a level drone."""
         thrust = self.mass.mass_kg * STANDARD_GRAVITY_MPS2 / len(self.motors)
-        speed = np.sqrt(thrust / self.config.motor.k_t)
-        return float(speed / units.rpm_to_rad_per_s(self.config.motor.max_rpm))
+        return hover_command(self.config.motor, self.config.prop, thrust, self.bus_voltage_v())
+
+
+def _ocv(b: BatteryConfig) -> float:
+    x = b.initial_soc * 10.0
+    lower = min(int(x), 9)
+    return b.ocv_curve_v[lower] + (b.ocv_curve_v[lower + 1] - b.ocv_curve_v[lower]) * (x - lower)
+
+
+def kv_radps_per_v(motor: MotorConfig) -> float:
+    return units.rpm_to_rad_per_s(motor.kv_rpm_per_v)
+
+
+def steady_speed_radps(motor: MotorConfig, prop: PropConfig, command: float, bus_v: float) -> float:
+    """Speed where motor torque equals prop drag torque (dc), or the first-order target."""
+    if motor.model == "first_order":
+        assert motor.max_rpm is not None
+        return command * units.rpm_to_rad_per_s(motor.max_rpm) * bus_v / motor.reference_voltage_v
+    # k_q w^2 + (Kt^2 / R) w - Kt (u V / R - I0) = 0, positive root
+    kt = 1.0 / kv_radps_per_v(motor)
+    a = prop.k_q
+    b = kt * kt / motor.winding_resistance_ohm
+    c = -kt * (command * bus_v / motor.winding_resistance_ohm - motor.no_load_current_a)
+    if c >= 0.0:
+        return 0.0
+    return (-b + math.sqrt(b * b - 4.0 * a * c)) / (2.0 * a)
+
+
+def hover_command(motor: MotorConfig, prop: PropConfig, thrust_n: float, bus_v: float) -> float:
+    speed = math.sqrt(thrust_n / prop.k_t)
+    if motor.model == "first_order":
+        assert motor.max_rpm is not None
+        return speed / units.rpm_to_rad_per_s(motor.max_rpm) * motor.reference_voltage_v / bus_v
+    kt = 1.0 / kv_radps_per_v(motor)
+    current = motor.no_load_current_a + prop.k_q * speed * speed / kt
+    return (current * motor.winding_resistance_ohm + kt * speed) / bus_v
+
+
+def _interp(table: tuple[tuple[float, float], ...], x: float) -> float:
+    if x <= table[0][0]:
+        return table[0][1]
+    for (x0, y0), (x1, y1) in pairwise(table):
+        if x <= x1:
+            return y0 + (y1 - y0) * (x - x0) / (x1 - x0)
+    return table[-1][1]
 
 
 def _mount(name: str, cfg: MountConfig, parts: dict[str, PlacedPart], cg: Vector) -> Mount:
@@ -119,6 +172,10 @@ def _list(v: Vector) -> list[float]:
 
 def to_json(model: CompiledDrone) -> dict[str, Any]:
     motor = model.config.motor
+    prop = model.config.prop
+    battery = model.config.battery
+    sensors = model.config.sensors
+    imu = sensors.imu
     contact = model.config.contact
     cg = model.cg_from_origin_frd_m
     return {
@@ -134,16 +191,60 @@ def to_json(model: CompiledDrone) -> dict[str, Any]:
                 "axis_frd": _list(m.axis_frd),
                 "spin": m.spin,
                 "rotor_inertia_kg_m2": motor.rotor_inertia_kg_m2,
-                "first_order": {
-                    "max_speed_radps": units.rpm_to_rad_per_s(motor.max_rpm),
+                "motor": {
+                    "model": motor.model,
+                    "max_speed_radps": units.rpm_to_rad_per_s(motor.max_rpm or 0.0),
                     "time_constant_s": motor.time_constant_s,
-                    "k_t": motor.k_t,
-                    "k_q": motor.k_q,
-                    "k_h": motor.k_h,
+                    "reference_voltage_v": motor.reference_voltage_v,
+                    "kv_radps_per_v": kv_radps_per_v(motor),
+                    "resistance_ohm": motor.winding_resistance_ohm,
+                    "no_load_current_a": motor.no_load_current_a,
+                    "brake_current_a": motor.brake_current_a,
+                    "rotor_inertia_kg_m2": motor.rotor_inertia_kg_m2,
+                    "pole_pairs": motor.poles // 2,
+                },
+                "prop": {
+                    "k_t": prop.k_t,
+                    "k_q": prop.k_q,
+                    "rho_ref_kg_m3": prop.rho_ref_kg_m3,
+                    "radius_m": units.mm_to_m(prop.diameter_mm) / 2.0,
+                    "pitch_m": units.mm_to_m(prop.pitch_mm),
+                    "inflow_coefficient": prop.inflow_coefficient,
+                    "rotor_drag_coefficient": prop.k_h,
+                    "blades": prop.blades,
                 },
             }
             for m in model.motors
         ],
+        "battery": {
+            "cells": battery.cells,
+            "capacity_ah": battery.capacity_mah * 1e-3,
+            "cell_resistance_ohm": battery.cell_resistance_mohm
+            * 1e-3
+            * _interp(battery.temperature_factor, battery.temperature_c),
+            "connector_resistance_ohm": battery.connector_resistance_mohm * 1e-3,
+            "avionics_current_a": battery.avionics_current_a,
+            "esc_cutoff_v": battery.esc_cutoff_v,
+            "initial_soc": battery.initial_soc,
+            "rc_resistance_ohm": battery.rc_resistance_mohm * 1e-3,
+            "rc_capacitance_f": battery.rc_capacitance_f,
+            "ocv_v": list(battery.ocv_curve_v),
+        },
+        "sensors": {
+            "imu": {
+                "gyro_noise_density_radps_rthz": units.deg_to_rad(imu.gyro_noise_density_dps_rthz),
+                "gyro_bias_walk_radps2_rthz": units.deg_to_rad(imu.gyro_bias_walk_dps2_rthz),
+                "gyro_range_radps": units.deg_to_rad(imu.gyro_range_dps),
+                "accel_noise_density_mps2_rthz": imu.accel_noise_density_mps2_rthz,
+                "accel_bias_walk_mps3_rthz": imu.accel_bias_walk_mps3_rthz,
+                "accel_range_mps2": imu.accel_range_g * STANDARD_GRAVITY_MPS2,
+                "vibration_imbalance_mps2_per_radps2": imu.vibration_imbalance_mps2_per_radps2,
+                "vibration_harmonic2": imu.vibration_harmonic2,
+                "vibration_blade_pass": imu.vibration_blade_pass,
+                "vibration_gyro_gain_radps_per_mps2": imu.vibration_gyro_gain_radps_per_mps2,
+            },
+            "baro": {"noise_pa": sensors.baro.noise_pa, "bias_pa": sensors.baro.bias_pa},
+        },
         "imu": {
             "position_frd_m": _list(model.imu.position_frd_m),
             "q_frd_from_imu": list(

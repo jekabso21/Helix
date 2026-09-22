@@ -8,14 +8,9 @@ layout:
   arm: { width_mm: 12, thickness_mm: 5, mass_g: 11 }
   motor_body: { diameter_mm: 28, height_mm: 30, mass_g: 30 }
   prop_body: { diameter_mm: 127, thickness_mm: 5, mass_g: 5 }
-motor:
-  model: first_order
-  max_rpm: 23873
-  time_constant_s: 0.02
-  k_t: 1.5e-6
-  k_q: 2.0e-8
-  k_h: 6.0e-5
-  rotor_inertia_kg_m2: 6.0e-6
+motor: configs/motors/generic_2207_1900kv.yaml
+prop: configs/props/generic_5x4.3x3.yaml
+battery: configs/batteries/generic_6s_1100.yaml
 parts:
   frame_body: { shape: box, size_mm: [150, 40, 30], mass_g: 90, pos_mm: [0, 0, -12] }
   stack: { shape: box, size_mm: [36, 36, 12], mass_g: 20, pos_mm: [0, 0, -15] }

@@ -3,11 +3,13 @@ configure_file(src/app/version.hpp.in generated/fpvsim/version.hpp @ONLY)
 add_library(fpvsim_simcore_models STATIC
     src/env/atmosphere.cpp
     src/physics/aero.cpp
+    src/physics/battery.cpp
     src/physics/contact.cpp
     src/physics/motor.cpp
     src/physics/propulsion.cpp
     src/physics/rigid_body.cpp
-    src/sensors/imu.cpp)
+    src/sensors/imu.cpp
+    src/sensors/imu_noise.cpp)
 add_library(fpvsim::simcore_models ALIAS fpvsim_simcore_models)
 target_include_directories(fpvsim_simcore_models PUBLIC include)
 target_link_libraries(fpvsim_simcore_models PUBLIC fpvsim::common PRIVATE fpvsim::options)

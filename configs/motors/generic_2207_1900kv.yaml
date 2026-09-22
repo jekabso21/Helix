@@ -1,0 +1,14 @@
+# Placeholder 2207 1900 kV: winding_resistance_ohm is the DC-equivalent value that reproduces
+# about 31k rpm and 43 A at full throttle on 6S with the generic 5" prop, not a datasheet number
+schema_version: 1
+model: dc
+kv_rpm_per_v: 1900
+winding_resistance_ohm: 0.18
+no_load_current_a: 1.5
+brake_current_a: 10
+poles: 14
+rotor_inertia_kg_m2: 3.0e-6
+reference_voltage_v: 24.0
+max_rpm: 23873          # used only with model: first_order
+time_constant_s: 0.02   # used only with model: first_order
+mass_g: 32

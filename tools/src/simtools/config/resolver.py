@@ -88,8 +88,19 @@ class ResolvedSession:
         return self.logging_root
 
 
-def load_drone(path: Path) -> DroneConfig:
-    return _load_model(DroneConfig, path)
+PART_FILES = ("motor", "prop", "battery")
+
+
+def load_drone(path: Path, base_dir: Path) -> DroneConfig:
+    """Loads a drone YAML; motor, prop and battery may name YAML files relative to base_dir."""
+    data = load_yaml(path)
+    for key in PART_FILES:
+        if isinstance(data.get(key), str):
+            data[key] = load_yaml(base_dir / str(data[key]))
+    try:
+        return DroneConfig.model_validate(data)
+    except ValidationError as error:
+        raise ConfigError(_validation_message(path, error)) from error
 
 
 def resolve_drone(drone: DroneConfig) -> dict[str, Any]:
@@ -104,7 +115,7 @@ def hover_throttle_us(drone: DroneConfig) -> float:
 def resolve_session(session_path: Path, base_dir: Path) -> ResolvedSession:
     """Validate a session and all it references; YAML paths are relative to base_dir."""
     session = _load_model(SessionConfig, session_path)
-    drone = _load_model(DroneConfig, base_dir / session.drone)
+    drone = load_drone(base_dir / session.drone, base_dir)
     environment = _load_model(EnvironmentConfig, base_dir / session.environment)
     cli_script = base_dir / session.betaflight.cli_script
     if not cli_script.exists():

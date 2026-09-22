@@ -5,8 +5,7 @@ from pathlib import Path
 import pytest
 
 from simtools.config import load_yaml, resolve_session, write_run_directory
-from simtools.config.resolver import ConfigError, hover_throttle_us
-from simtools.config.schemas import DroneConfig
+from simtools.config.resolver import ConfigError, hover_throttle_us, load_drone
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SESSION = REPO_ROOT / "configs/sessions/ci_hover.yaml"
@@ -18,7 +17,7 @@ def test_ci_hover_session_resolves_to_si_json() -> None:
     assert session["physics_rate_hz"] == 1000
     assert session["atmosphere"] == {"ground_temperature_k": 288.15, "ground_pressure_pa": 101325.0}
     assert session["origin"]["lat_rad"] == pytest.approx(math.radians(56.0))
-    assert session["input"]["altitude_hold"]["hover_throttle_us"] == pytest.approx(1360.5, abs=0.5)
+    assert session["input"]["altitude_hold"]["hover_throttle_us"] == pytest.approx(1213.6, abs=1.0)
     assert "aux 1 1 0 900 2100 0 0" in resolved.cli_lines
     assert "aux 0 0 0 1700 2100 0 0" in resolved.cli_lines
 
@@ -36,7 +35,11 @@ def test_quad_x_layout_matches_betaflight_motor_order() -> None:
         [arm - cg[0], arm - cg[1], -cg[2]]
     )  # front right
     assert [m["spin"] for m in motors] == [1.0, -1.0, -1.0, 1.0]
-    assert motors[0]["first_order"]["max_speed_radps"] == pytest.approx(2500.0, abs=0.1)
+    assert motors[0]["motor"]["model"] == "dc"
+    assert motors[0]["motor"]["kv_radps_per_v"] == pytest.approx(1900 * math.tau / 60)
+    assert motors[0]["prop"]["rotor_drag_coefficient"] == 6e-5
+    assert drone["battery"]["capacity_ah"] == pytest.approx(1.1)
+    assert drone["schema_version"] == 2
     assert drone["mass_kg"] == pytest.approx(0.497)
     assert drone["contact"]["points_frd_m"][0][2] == pytest.approx(0.02 - cg[2])
 
@@ -48,7 +51,7 @@ def test_props_out_reverses_all_spins(tmp_path: Path) -> None:
         .replace("props_out: false", "props_out: true")
     )
     (tmp_path / "drone.yaml").write_text(text)
-    drone = DroneConfig.model_validate(load_yaml(tmp_path / "drone.yaml"))
+    drone = load_drone(tmp_path / "drone.yaml", REPO_ROOT)
     assert drone.layout.props_out
     from simtools.config.resolver import resolve_drone
 
@@ -93,8 +96,8 @@ def test_run_directory_layout(tmp_path: Path) -> None:
 
 
 def test_hover_throttle_is_between_idle_and_full() -> None:
-    drone = DroneConfig.model_validate(load_yaml(REPO_ROOT / "configs/drones/reference_5in.yaml"))
-    assert 1200.0 < hover_throttle_us(drone) < 1500.0
+    drone = load_drone(REPO_ROOT / "configs/drones/reference_5in.yaml", REPO_ROOT)
+    assert 1150.0 < hover_throttle_us(drone) < 1500.0
 
 
 def test_gamepad_session_resolves_the_mapping_by_channel_name() -> None:

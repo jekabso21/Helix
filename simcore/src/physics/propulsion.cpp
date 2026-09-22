@@ -23,7 +23,7 @@ Loads propulsion_loads(const std::array<MotorMount, kMaxMotors>& mounts,
 }
 
 Loads rotor_drag_loads(const std::array<MotorMount, kMaxMotors>& mounts,
-                       const std::array<MotorParams, kMaxMotors>& motors,
+                       const std::array<PropParams, kMaxMotors>& props,
                        const std::array<MotorOutput, kMaxMotors>& outputs, std::size_t motor_count,
                        const Eigen::Vector3d& air_velocity_frd,
                        const Eigen::Vector3d& angular_rate_frd) {
@@ -38,7 +38,7 @@ Loads rotor_drag_loads(const std::array<MotorMount, kMaxMotors>& mounts,
     const Eigen::Vector3d in_plane =
         hub_velocity - hub_velocity.dot(mount.axis_frd) * mount.axis_frd;
     const Eigen::Vector3d force =
-        -motors[i].rotor_drag_coefficient * outputs[i].speed_radps * in_plane;
+        -props[i].rotor_drag_coefficient * outputs[i].speed_radps * in_plane;
     loads.force_frd += force;
     loads.torque_frd += mount.position_frd.cross(force);
   }

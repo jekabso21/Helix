@@ -62,7 +62,13 @@ Snapshot make_snapshot(SimTime t, std::int64_t step_index, const Vehicle& vehicl
     s.motor_command[i] = i < bf::kMotorCount ? commands.command[i] : 0.0;
     s.motor_rpm[i] = state.motor_speed_radps[i] * kRadPerSecToRpm;
     s.motor_thrust_n[i] = result.motors[i].thrust_n;
+    s.motor_current_a[i] = result.motors[i].current_a;
   }
+  s.battery_voltage_v = state.battery.bus_voltage_v;
+  s.battery_current_a = state.battery.current_a;
+  s.battery_soc = state.battery.soc;
+  s.battery_consumed_mah = state.battery.consumed_ah * 1000.0;
+  s.battery_cutoff = state.battery.cutoff;
   s.rc_channels_us = rc;
   for (std::size_t i = 0; i < input::kMaxAxes; ++i) {
     s.raw_axes[i] = static_cast<float>(device.axes[i]);
@@ -128,6 +134,8 @@ bool apply_commands(io::CommandQueue& commands_in, io::ResultQueue& results_out,
       }
       case CommandType::kReloadModel:
         if (model_control.take(reloaded)) {
+          reloaded.imu_noise.sample_rate_hz = vehicle.params().imu_noise.sample_rate_hz;
+          reloaded.imu_noise.seed = vehicle.params().imu_noise.seed;
           spawn = spawn_state(reloaded, spawn_cfg.north_m, spawn_cfg.east_m, spawn_cfg.height_agl_m,
                               spawn_cfg.heading_rad);
           vehicle.reload(reloaded, spawn);
@@ -192,7 +200,10 @@ RunSummary run_realtime(const config::SessionConfig& session, const VehicleParam
   physics::RigidBodyState spawn =
       spawn_state(drone, session.spawn.north_m, session.spawn.east_m, session.spawn.height_agl_m,
                   session.spawn.heading_rad);
-  Vehicle vehicle(drone, spawn);
+  VehicleParams model = drone;
+  model.imu_noise.sample_rate_hz = static_cast<double>(session.physics_rate_hz);
+  model.imu_noise.seed = session.seed;
+  Vehicle vehicle(model, spawn);
   bf::BetaflightLink link(session.betaflight);
   pilot::AltitudeHoldPilot autopilot(session.input.altitude_hold);
   const bool use_joystick = session.input.source == "gamepad";
@@ -269,7 +280,7 @@ RunSummary run_realtime(const config::SessionConfig& session, const VehicleParam
         link.send_rc(to_seconds(t), rc);
       }
       const physics::RigidBodyState state_before = before.body;
-      result = vehicle.step(motor_commands, air.density_kg_m3, dt_s);
+      result = vehicle.step(motor_commands, air, to_seconds(t), dt_s);
       if (step_index % fdm_every == 0) {
         last_fdm = bf::FdmInput{.sim_time_s = to_seconds(t),
                                 .angular_rate_frd = result.imu.angular_rate_frd,
@@ -279,7 +290,7 @@ RunSummary run_realtime(const config::SessionConfig& session, const VehicleParam
                                 .longitude_rad = session.origin.longitude_rad,
                                 .latitude_rad = session.origin.latitude_rad,
                                 .altitude_m = session.origin.altitude_m + height_m,
-                                .pressure_pa = air.pressure_pa};
+                                .pressure_pa = result.baro.pressure_pa};
         have_fdm = true;
         link.send_fdm(last_fdm);
       }

@@ -21,6 +21,12 @@ struct Snapshot {
   std::array<double, physics::kMaxMotors> motor_command;
   std::array<double, physics::kMaxMotors> motor_rpm;
   std::array<double, physics::kMaxMotors> motor_thrust_n;
+  std::array<double, physics::kMaxMotors> motor_current_a;
+  double battery_voltage_v;
+  double battery_current_a;
+  double battery_soc;
+  double battery_consumed_mah;
+  bool battery_cutoff;
   std::array<std::uint16_t, 16> rc_channels_us;
   std::array<float, input::kMaxAxes> raw_axes;
   std::array<std::uint8_t, input::kMaxButtons> raw_buttons;

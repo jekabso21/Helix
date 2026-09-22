@@ -1,7 +1,9 @@
 fpvsim_add_test(simcore_model_tests
     aero_test.cpp
     atmosphere_test.cpp
+    battery_test.cpp
     contact_test.cpp
+    imu_noise_test.cpp
     imu_test.cpp
     motor_test.cpp
     propulsion_test.cpp

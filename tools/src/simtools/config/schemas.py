@@ -278,21 +278,114 @@ class ContactConfig(Strict):
     crash_speed_mps: float = 6.0
 
 
-class FirstOrderMotorConfig(Strict):
-    model: Literal["first_order"] = "first_order"
-    max_rpm: float
-    time_constant_s: float
-    k_t: float
-    k_q: float
-    k_h: float = 0.0
-    rotor_inertia_kg_m2: float
+LIPO_OCV_V = (3.30, 3.60, 3.70, 3.75, 3.79, 3.83, 3.87, 3.93, 4.00, 4.10, 4.20)
+LIPO_TEMPERATURE_FACTOR = (
+    (-10.0, 2.0),
+    (0.0, 1.6),
+    (10.0, 1.3),
+    (25.0, 1.0),
+    (40.0, 0.9),
+    (60.0, 0.85),
+)
+
+
+class MotorConfig(Strict):
+    schema_version: Literal[1] = 1
+    model: Literal["dc", "first_order"] = "dc"
+    kv_rpm_per_v: float = Field(gt=0.0)
+    winding_resistance_ohm: float = Field(gt=0.0)  # DC-equivalent value, fitted, not the datasheet
+    no_load_current_a: float = Field(default=0.0, ge=0.0)
+    brake_current_a: float = Field(default=10.0, ge=0.0)
+    poles: int = Field(default=14, ge=2)
+    rotor_inertia_kg_m2: float = Field(gt=0.0)
+    reference_voltage_v: float = Field(default=24.0, gt=0.0)
+    max_rpm: float | None = Field(
+        default=None, gt=0.0
+    )  # first_order: at full throttle and reference voltage
+    time_constant_s: float = Field(default=0.02, gt=0.0)
+    mass_g: float | None = None
+    thrust_table: str | None = None
+
+    @model_validator(mode="after")
+    def first_order_needs_max_rpm(self) -> "MotorConfig":
+        if self.model == "first_order" and self.max_rpm is None:
+            raise ValueError("first_order motors need max_rpm")
+        if self.poles % 2 != 0:
+            raise ValueError("poles must be even")
+        return self
+
+
+class PropConfig(Strict):
+    schema_version: Literal[1] = 1
+    diameter_mm: float = Field(gt=0.0)
+    pitch_mm: float = Field(gt=0.0)
+    blades: int = Field(default=3, ge=2)
+    mass_g: float | None = None
+    k_t: float = Field(gt=0.0)
+    k_q: float = Field(gt=0.0)
+    rho_ref_kg_m3: float = Field(default=1.225, gt=0.0)
+    inflow_coefficient: float = Field(default=1.0, ge=0.0)
+    k_h: float = Field(default=0.0, ge=0.0)
+
+
+class BatteryConfig(Strict):
+    schema_version: Literal[1] = 1
+    cells: int = Field(ge=1)
+    capacity_mah: float = Field(gt=0.0)
+    cell_resistance_mohm: float = Field(gt=0.0)
+    connector_resistance_mohm: float = Field(default=0.0, ge=0.0)
+    temperature_c: float = 25.0
+    avionics_current_a: float = Field(default=0.5, ge=0.0)
+    esc_cutoff_v: float = Field(default=0.0, ge=0.0)
+    initial_soc: float = Field(default=1.0, ge=0.0, le=1.0)
+    rc_resistance_mohm: float = Field(default=0.0, ge=0.0)
+    rc_capacitance_f: float = Field(default=0.0, ge=0.0)
+    ocv_curve_v: tuple[float, ...] = LIPO_OCV_V
+    temperature_factor: tuple[tuple[float, float], ...] = LIPO_TEMPERATURE_FACTOR
+
+    @model_validator(mode="after")
+    def tables_are_well_formed(self) -> "BatteryConfig":
+        if len(self.ocv_curve_v) != 11:
+            raise ValueError("ocv_curve_v needs 11 values, per cell at SOC 0, 0.1 .. 1")
+        if any(b <= a for a, b in zip(self.ocv_curve_v, self.ocv_curve_v[1:], strict=False)):
+            raise ValueError("ocv_curve_v must increase with SOC")
+        temps = [t for t, _ in self.temperature_factor]
+        if len(temps) < 2 or temps != sorted(temps):
+            raise ValueError("temperature_factor must list at least two rising temperatures")
+        return self
+
+
+class ImuNoiseConfig(Strict):
+    gyro_noise_density_dps_rthz: float = Field(default=0.005, ge=0.0)
+    gyro_bias_walk_dps2_rthz: float = Field(default=0.001, ge=0.0)
+    gyro_range_dps: float = Field(default=2000.0, ge=0.0)
+    accel_noise_density_mps2_rthz: float = Field(default=0.003, ge=0.0)
+    accel_bias_walk_mps3_rthz: float = Field(default=0.0005, ge=0.0)
+    accel_range_g: float = Field(default=16.0, ge=0.0)
+    vibration_imbalance_mps2_per_radps2: float = Field(default=2e-7, ge=0.0)
+    vibration_harmonic2: float = Field(default=0.3, ge=0.0)
+    vibration_blade_pass: float = Field(default=0.2, ge=0.0)
+    vibration_gyro_gain_radps_per_mps2: float = Field(default=0.02, ge=0.0)
+
+
+class BaroConfig(Strict):
+    noise_pa: float = Field(default=3.0, ge=0.0)
+    bias_pa: float = 0.0
+
+
+class SensorsConfig(Strict):
+    imu: ImuNoiseConfig = Field(default_factory=ImuNoiseConfig)
+    baro: BaroConfig = Field(default_factory=BaroConfig)
 
 
 class DroneConfig(Strict):
     schema_version: Literal[1]
     name: str
     layout: LayoutConfig
-    motor: FirstOrderMotorConfig
+    motor: MotorConfig
+    prop: PropConfig
+    battery: BatteryConfig
+    sensors: SensorsConfig = Field(default_factory=SensorsConfig)
     parts: dict[str, Part]
     imu: MountConfig = Field(default_factory=MountConfig)
     cameras: list[CameraMountConfig] = Field(default_factory=list[CameraMountConfig])

@@ -71,7 +71,7 @@ nlohmann::json motors_json(const sim::Snapshot& s) {
     motors.push_back({{"bf_index", i + 1},
                       {"command", s.motor_command[i]},
                       {"rpm", s.motor_rpm[i]},
-                      {"current_a", nullptr},
+                      {"current_a", s.motor_current_a[i]},
                       {"thrust_n", s.motor_thrust_n[i]}});
   }
   return motors;
@@ -114,7 +114,12 @@ nlohmann::json telemetry_json(const sim::Snapshot& s, std::int64_t physics_rate_
             {"pitch_rad", euler.pitch_rad},
             {"heading_rad", euler.yaw_rad},
             {"rates_frd_radps", s.angular_rate_frd}}},
-          {"battery", nullptr},
+          {"battery",
+           {{"voltage_v", s.battery_voltage_v},
+            {"current_a", s.battery_current_a},
+            {"consumed_mah", s.battery_consumed_mah},
+            {"soc", s.battery_soc},
+            {"cutoff", s.battery_cutoff}}},
           {"motors", motors_json(s)},
           {"input",
            {{"source", input_source},

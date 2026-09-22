@@ -1,0 +1,11 @@
+# Placeholder 5x4.3 tri-blade; k_t and k_q are rough values, replace with a propfit result
+schema_version: 1
+diameter_mm: 127
+pitch_mm: 109.2
+blades: 3
+mass_g: 5
+k_t: 1.5e-6
+k_q: 2.0e-8
+rho_ref_kg_m3: 1.225
+inflow_coefficient: 1.0
+k_h: 6.0e-5

@@ -14,13 +14,15 @@ namespace {
 
 std::array<physics::MotorOutput, physics::kMaxMotors> steady_outputs(
     const std::array<double, quad::kMotorCount>& speeds) {
-  const physics::MotorParams params = quad::quad_motor();
+  const physics::PropParams params = quad::quad_prop();
   std::array<physics::MotorOutput, physics::kMaxMotors> outputs{};
   for (std::size_t i = 0; i < quad::kMotorCount; ++i) {
     outputs[i] = physics::MotorOutput{
         .speed_radps = speeds[i],
         .thrust_n = params.thrust_coefficient * speeds[i] * speeds[i],
-        .reaction_torque_nm = params.torque_coefficient * speeds[i] * speeds[i]};
+        .reaction_torque_nm = params.torque_coefficient * speeds[i] * speeds[i],
+        .current_a = 0.0,
+        .bus_current_a = 0.0};
   }
   return outputs;
 }
@@ -35,9 +37,11 @@ int sign(double value) {
 }  // namespace
 
 TEST(PropulsionTest, HoverThrustEqualsWeight) {
-  const physics::MotorParams params = quad::quad_motor();
+  const physics::MotorParams motor = quad::quad_motor();
   const double weight = quad::kMassKg * fpvsim::kStandardGravityMps2;
-  const double speed = physics::hover_command(params, weight / 4.0) * params.max_speed_radps;
+  const double speed =
+      physics::hover_command(motor, quad::quad_prop(), weight / 4.0, quad::kBusVoltage) *
+      motor.max_speed_radps;
   const physics::Loads loads =
       physics::propulsion_loads(quad::quad_mounts(), quad::quad_motors(),
                                 steady_outputs({speed, speed, speed, speed}), quad::kMotorCount);
@@ -83,24 +87,24 @@ TEST(PropulsionTest, BetaflightCorrectionsOpposeTheDisturbance) {
 
 TEST(PropulsionTest, RotorDragOpposesInPlaneAirspeedOnly) {
   const auto outputs = steady_outputs({1000.0, 1000.0, 1000.0, 1000.0});
-  const physics::Loads sideways = physics::rotor_drag_loads(
-      quad::quad_mounts(), quad::quad_motors(), outputs, quad::kMotorCount,
-      Eigen::Vector3d(10.0, 0.0, 0.0), Eigen::Vector3d::Zero());
+  const physics::Loads sideways =
+      physics::rotor_drag_loads(quad::quad_mounts(), quad::quad_props(), outputs, quad::kMotorCount,
+                                Eigen::Vector3d(10.0, 0.0, 0.0), Eigen::Vector3d::Zero());
   EXPECT_NEAR(sideways.force_frd.x(), -4.0 * 6.0e-5 * 1000.0 * 10.0, 1e-12);
   EXPECT_NEAR(sideways.force_frd.y(), 0.0, 1e-12);
   EXPECT_NEAR(sideways.force_frd.z(), 0.0, 1e-12);
   EXPECT_LT(sideways.torque_frd.norm(), 1e-12);
-  const physics::Loads axial = physics::rotor_drag_loads(
-      quad::quad_mounts(), quad::quad_motors(), outputs, quad::kMotorCount,
-      Eigen::Vector3d(0.0, 0.0, -10.0), Eigen::Vector3d::Zero());
+  const physics::Loads axial =
+      physics::rotor_drag_loads(quad::quad_mounts(), quad::quad_props(), outputs, quad::kMotorCount,
+                                Eigen::Vector3d(0.0, 0.0, -10.0), Eigen::Vector3d::Zero());
   EXPECT_LT(axial.force_frd.norm(), 1e-12);
 }
 
 TEST(PropulsionTest, RotorDragDampsBodyRates) {
   const auto outputs = steady_outputs({1000.0, 1000.0, 1000.0, 1000.0});
-  const physics::Loads spinning = physics::rotor_drag_loads(
-      quad::quad_mounts(), quad::quad_motors(), outputs, quad::kMotorCount, Eigen::Vector3d::Zero(),
-      Eigen::Vector3d(0.0, 0.0, 5.0));
+  const physics::Loads spinning =
+      physics::rotor_drag_loads(quad::quad_mounts(), quad::quad_props(), outputs, quad::kMotorCount,
+                                Eigen::Vector3d::Zero(), Eigen::Vector3d(0.0, 0.0, 5.0));
   EXPECT_LT(spinning.torque_frd.z(), 0.0);
   EXPECT_LT(spinning.force_frd.norm(), 1e-12);
 }

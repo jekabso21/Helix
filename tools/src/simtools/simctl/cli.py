@@ -71,6 +71,7 @@ def run(
 @app.command()
 def model(
     drone: Path,
+    base_dir: BaseDirOption = Path(),
     out: Annotated[
         Path | None, typer.Option("--out", help="Directory for drone.json and drone.glb")
     ] = None,
@@ -78,7 +79,7 @@ def model(
 ) -> None:
     """Compile a drone parts list into mass properties, geometry and a glb."""
     try:
-        compiled = compile_drone(load_drone(drone))
+        compiled = compile_drone(load_drone(drone, base_dir))
     except ConfigError as error:
         typer.echo(str(error), err=True)
         raise typer.Exit(code=2) from error

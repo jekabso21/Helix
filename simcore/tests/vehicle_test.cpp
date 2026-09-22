@@ -19,15 +19,19 @@ sim::VehicleParams quad_params() {
                             .motor_count = quad::kMotorCount,
                             .mounts = quad::quad_mounts(),
                             .motors = quad::quad_motors(),
+                            .props = quad::quad_props(),
+                            .battery = quad::quad_battery(),
                             .aero = {.drag_area_frd_m2 = Vector3d(0.01, 0.01, 0.02),
                                      .center_of_pressure_frd = Vector3d::Zero(),
                                      .angular_damping = Vector3d(0.0005, 0.0005, 0.0005)},
                             .contact = quad::quad_contact(),
                             .crash_speed_mps = 6.0,
-                            .imu_offset_frd = Vector3d::Zero()};
+                            .imu_offset_frd = Vector3d::Zero(),
+                            .imu_noise = quad::quiet_imu()};
 }
 
-constexpr double kRho = 1.225;
+const fpvsim::env::Air kAir{
+    .temperature_k = 288.15, .pressure_pa = 101325.0, .density_kg_m3 = 1.225};
 
 }  // namespace
 
@@ -36,7 +40,7 @@ TEST(VehicleTest, SpawnRestsOnTheGroundWithoutSinkingOrBouncing) {
   sim::Vehicle vehicle(params, sim::spawn_state(params, 0.0, 0.0, 0.0, 0.0));
   const double start_z = vehicle.state().body.position_ned.z();
   for (int i = 0; i < 3000; ++i) {
-    vehicle.step({}, kRho, 0.001);
+    vehicle.step({}, kAir, 0.0, 0.001);
   }
   EXPECT_NEAR(vehicle.state().body.position_ned.z(), start_z, 0.002);
   EXPECT_FALSE(vehicle.state().crashed);
@@ -44,21 +48,24 @@ TEST(VehicleTest, SpawnRestsOnTheGroundWithoutSinkingOrBouncing) {
 }
 
 TEST(VehicleTest, HoverCommandReachesEquilibriumInStillAir) {
-  const sim::VehicleParams params = quad_params();
+  sim::VehicleParams params = quad_params();
+  // hover_command() assumes the open-circuit voltage; no sag keeps the balance exact
+  params.battery.cell_resistance_ohm = 0.0;
+  params.battery.connector_resistance_ohm = 0.0;
   sim::Vehicle vehicle(params, sim::spawn_state(params, 0.0, 0.0, 10.0, 0.0));
   sim::MotorCommandArray commands{};
   commands.fill(vehicle.hover_command());
   const double start_z = vehicle.state().body.position_ned.z();
   sim::StepResult result{};
   for (int i = 0; i < 5000; ++i) {
-    result = vehicle.step(commands, kRho, 0.001);
+    result = vehicle.step(commands, kAir, 0.0, 0.001);
   }
   // Motors spin up from rest, so the drone sinks a little before thrust balances weight
   EXPECT_GT(vehicle.state().body.position_ned.z(), start_z);
   EXPECT_LT(vehicle.state().body.position_ned.z(), start_z + 3.0);
-  // Only the drag on the residual sink velocity remains, about 0.005 m/s^2
-  EXPECT_NEAR(result.rates.acceleration_ned.z(), 0.0, 1e-2);
-  EXPECT_NEAR(result.imu.specific_force_frd.z(), -fpvsim::kStandardGravityMps2, 1e-2);
+  // Left over: drag on the residual sink velocity and the DShot step of the command (0.1 %)
+  EXPECT_NEAR(result.rates.acceleration_ned.z(), 0.0, 3e-2);
+  EXPECT_NEAR(result.imu.specific_force_frd.z(), -fpvsim::kStandardGravityMps2, 3e-2);
   EXPECT_LT(vehicle.state().body.angular_rate_frd.norm(), 1e-6);
   EXPECT_FALSE(result.touching);
 }
@@ -70,12 +77,12 @@ TEST(VehicleTest, FallingFromHeightCrashesAndCutsMotors) {
   full.fill(1.0);
   bool crashed = false;
   for (int i = 0; i < 3000 && !crashed; ++i) {
-    vehicle.step({}, kRho, 0.001);
+    vehicle.step({}, kAir, 0.0, 0.001);
     crashed = vehicle.state().crashed;
   }
   ASSERT_TRUE(crashed);
   for (int i = 0; i < 1000; ++i) {
-    vehicle.step(full, kRho, 0.001);
+    vehicle.step(full, kAir, 0.0, 0.001);
   }
   EXPECT_EQ(vehicle.state().motor_speed_radps[0], 0.0);
   vehicle.reset(sim::spawn_state(params, 0.0, 0.0, 0.0, 0.0));
@@ -97,7 +104,7 @@ TEST(VehicleTest, ReloadSwapsTheModelAndResetsToSpawn) {
   sim::MotorCommandArray full{};
   full.fill(1.0);
   for (int i = 0; i < 200; ++i) {
-    vehicle.step(full, kRho, 0.001);
+    vehicle.step(full, kAir, 0.0, 0.001);
   }
   sim::VehicleParams heavier = params;
   heavier.mass =
@@ -122,7 +129,7 @@ TEST(VehicleTest, EqualThrustWithAForwardCgPitchesNoseUpByTheMomentBalance) {
   sim::MotorCommandArray half{};
   half.fill(0.5);
   // first step: the body has no angular rate yet, so no damping or gyroscopic terms
-  const sim::StepResult result = vehicle.step(half, kRho, 0.001);
+  const sim::StepResult result = vehicle.step(half, kAir, 0.0, 0.001);
   double total_thrust = 0.0;
   for (std::size_t i = 0; i < quad::kMotorCount; ++i) {
     total_thrust += result.motors[i].thrust_n;
