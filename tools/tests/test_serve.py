@@ -119,3 +119,30 @@ def test_status_subscription_sends_the_current_status_first(server: Server) -> N
     assert event["event"] == "status" and event["data"]["state"] == "idle"
     assert client.request("unsubscribe", {"subscription_id": result["subscription_id"]})["ok"]
     client.close()
+
+
+def test_drone_preview_without_a_session_needs_a_path(server: Server) -> None:
+    client = LineClient(server.server_address[1])
+    assert client.request("get_drone")["error"]["code"] == "invalid_state"
+    base = client.request("get_drone", {"path": "configs/sessions/ci_hover.yaml"})["result"]
+    assert base["mass_kg"] == pytest.approx(0.497)
+    names = [p["name"] for p in base["parts"]]
+    assert "battery" in names and "motor1" not in names
+    moved = client.request(
+        "preview_drone",
+        {
+            "path": "configs/sessions/ci_hover.yaml",
+            "overrides": {"parts": {"battery": {"pos_mm": [20.0, 0.0, -46.0]}}},
+        },
+    )["result"]
+    shift = moved["cg_from_origin_frd_m"][0] - base["cg_from_origin_frd_m"][0]
+    assert shift == pytest.approx(0.185 * 0.020 / 0.497, abs=1e-9)
+    front = [h["fraction"] for h in moved["hover"] if h["bf_index"] in (2, 4)]
+    rear = [h["fraction"] for h in moved["hover"] if h["bf_index"] in (1, 3)]
+    assert min(front) > max(rear)
+    bad = client.request(
+        "preview_drone",
+        {"path": "configs/sessions/ci_hover.yaml", "overrides": {"parts": {"nope": {}}}},
+    )
+    assert bad["error"]["code"] == "invalid_params"
+    assert client.request("apply_drone", {"overrides": {}})["error"]["code"] == "invalid_state"

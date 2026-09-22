@@ -18,6 +18,7 @@ from simtools.config.schemas import (
     SessionConfig,
 )
 from simtools.modelc.compile import compile_drone, to_json
+from simtools.modelc.gltf import export_glb
 
 RESOLVED_SCHEMA_VERSION = 1
 
@@ -77,6 +78,7 @@ class ResolvedSession:
     name: str
     session: dict[str, Any]
     drone: dict[str, Any]
+    drone_config: DroneConfig
     cli_lines: list[str]
     betaflight_binary: Path
     ports: dict[str, int]
@@ -171,6 +173,7 @@ def resolve_session(session_path: Path, base_dir: Path) -> ResolvedSession:
         name=session.name,
         session=resolved,
         drone=resolve_drone(drone),
+        drone_config=drone,
         cli_lines=cli_lines,
         betaflight_binary=base_dir / session.betaflight.binary,
         ports={"uart_base": session.betaflight.ports.uart_base, **ports},
@@ -200,6 +203,7 @@ def write_run_directory(
         (run_dir / sub).mkdir(parents=True, exist_ok=False)
     (run_dir / "resolved/session.json").write_text(json.dumps(resolved.session, indent=2))
     (run_dir / "resolved/drone.json").write_text(json.dumps(resolved.drone, indent=2))
+    (run_dir / "resolved/drone.glb").write_bytes(export_glb(compile_drone(resolved.drone_config)))
     (run_dir / "betaflight/cli.txt").write_text("\n".join(resolved.cli_lines) + "\n")
     meta = {
         "created_utc": stamp,

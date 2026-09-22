@@ -11,8 +11,17 @@ from typing import Any, cast
 import yaml
 from pydantic import ValidationError
 
-from simtools.config.resolver import ConfigError, load_yaml, resolve_session, write_run_directory
+from simtools.api.client import ApiError, ControlClient
+from simtools.config.resolver import (
+    ConfigError,
+    ResolvedSession,
+    load_yaml,
+    resolve_session,
+    write_run_directory,
+)
 from simtools.config.schemas import InputMappingConfig
+from simtools.modelc import compile_drone, export_glb, to_json
+from simtools.modelc.overrides import OverrideError, apply_overrides, summary
 from simtools.msp import MspCommand, MspError, parse_status_ex
 from simtools.simctl.launcher import LaunchError, ProcessSet, find_simcore, start_processes
 from simtools.sitl import HOST, connect_uart
@@ -32,6 +41,9 @@ class Supervisor:
         self._lock = threading.Lock()
         self._processes: ProcessSet | None = None
         self._run_dir: Path | None = None
+        self._resolved: ResolvedSession | None = None
+        self._model_revision = 0
+        self._model_overrides: Json = {}
         self._state = "idle"
         self._last_error: str | None = None
         self._subscribers: list[tuple[str, queue.Queue[Json]]] = []
@@ -114,6 +126,7 @@ class Supervisor:
                 "state": self._state,
                 "run_dir": None if self._run_dir is None else str(self._run_dir),
                 "last_error": self._last_error,
+                "drone": self._drone_files(),
                 "processes": [
                     {
                         "name": p.name,
@@ -158,6 +171,9 @@ class Supervisor:
             simcore = find_simcore(self.base_dir)
             with self._lock:
                 self._run_dir = run_dir
+                self._resolved = resolved
+                self._model_revision = 0
+                self._model_overrides = {}
             self._publish("status", self.status())
             processes = start_processes(resolved, run_dir, simcore)
         except (ConfigError, LaunchError, OSError) as error:
@@ -185,6 +201,66 @@ class Supervisor:
 
     def shutdown(self) -> None:
         self.stop()
+
+    # drone model
+
+    def _drone_files(self) -> Json | None:
+        if self._run_dir is None or self._resolved is None:
+            return None
+        suffix = "" if self._model_revision == 0 else f".r{self._model_revision}"
+        return {
+            "revision": self._model_revision,
+            "json": str(self._run_dir / f"resolved/drone{suffix}.json"),
+            "glb": str(self._run_dir / f"resolved/drone{suffix}.glb"),
+        }
+
+    def get_drone(self, path: str | None) -> Json:
+        with self._lock:
+            resolved, overrides = self._resolved, dict(self._model_overrides)
+        if path is not None:
+            resolved = resolve_session(self.base_dir / path, self.base_dir)
+            overrides = {}
+        if resolved is None:
+            raise LaunchError("no session running; pass path to look at a session's drone")
+        result = summary(compile_drone(apply_overrides(resolved.drone_config, overrides)))
+        result["overrides"] = overrides
+        return result
+
+    def preview_drone(self, overrides: Json, path: str | None) -> Json:
+        with self._lock:
+            resolved = self._resolved
+        if path is not None:
+            resolved = resolve_session(self.base_dir / path, self.base_dir)
+        if resolved is None:
+            raise LaunchError("no session running; pass path to preview a session's drone")
+        result = summary(compile_drone(apply_overrides(resolved.drone_config, overrides)))
+        result["overrides"] = overrides
+        return result
+
+    def apply_drone(self, overrides: Json) -> Json:
+        with self._lock:
+            resolved, run_dir, processes = self._resolved, self._run_dir, self._processes
+            revision = self._model_revision + 1
+        if resolved is None or run_dir is None or processes is None or not processes.alive():
+            raise LaunchError("no session running")
+        compiled = compile_drone(apply_overrides(resolved.drone_config, overrides))
+        json_path = run_dir / f"resolved/drone.r{revision}.json"
+        json_path.write_text(json.dumps(to_json(compiled), indent=2))
+        (run_dir / f"resolved/drone.r{revision}.glb").write_bytes(export_glb(compiled))
+        api = resolved.session["control_api"]
+        try:
+            with ControlClient(api["host"], api["port"]) as client:
+                client.request("reload_model", {"path": str(json_path)})
+        except (OSError, ApiError) as error:
+            raise LaunchError(f"reload_model failed: {error}") from error
+        with self._lock:
+            self._model_revision = revision
+            self._model_overrides = dict(overrides)
+        self._publish("status", self.status())
+        result = summary(compiled)
+        result["overrides"] = overrides
+        result["drone"] = self._drone_files()
+        return result
 
     # subscriptions
 
@@ -341,6 +417,21 @@ class Handler(socketserver.StreamRequestHandler):
                     bool(params.get("make_default", False)),
                 )
                 return self._ok(request_id, result), None
+            if method == "get_drone":
+                path = params.get("path")
+                return self._ok(
+                    request_id, supervisor.get_drone(None if path is None else str(path))
+                ), None
+            if method == "preview_drone":
+                path = params.get("path")
+                result = supervisor.preview_drone(
+                    dict(params.get("overrides", {})), None if path is None else str(path)
+                )
+                return self._ok(request_id, result), None
+            if method == "apply_drone":
+                return self._ok(
+                    request_id, supervisor.apply_drone(dict(params.get("overrides", {})))
+                ), None
             if method == "subscribe":
                 topic = str(params.get("topic", ""))
                 if topic not in ("status", "fc"):
@@ -361,6 +452,8 @@ class Handler(socketserver.StreamRequestHandler):
             return self._error(request_id, "invalid_params", f"missing {error}"), None
         except LaunchError as error:
             return self._error(request_id, "invalid_state", str(error)), None
+        except (ConfigError, OverrideError) as error:
+            return self._error(request_id, "invalid_params", str(error)), None
 
     @staticmethod
     def _ok(request_id: Any, result: Json) -> Json:
