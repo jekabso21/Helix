@@ -13,9 +13,12 @@ environment, camera video, link emulation, failure injection and test automation
 
 ## Demo
 
-[demo/2026-09-22_14-03-44.mp4](demo/2026-09-22_14-03-44.mp4) (2 min): flying with a RadioMaster
-Boxer from the app, the Input tab with live bindings, chase and FPV views over the obstacle
-field, telemetry, and the raw video output played in a GStreamer window next to the app.
+![fpvsim demo: GStreamer video window, Input tab, chase view and FPV preview](demo/preview.gif)
+
+Full recording: [demo/2026-09-22_14-03-44.mp4](demo/2026-09-22_14-03-44.mp4) (2 min): flying
+with a RadioMaster Boxer from the app, the Input tab with live bindings, chase and FPV views over
+the obstacle field, telemetry, and the raw video output played in a GStreamer window next to the
+app.
 
 ## Setup
 
