@@ -19,7 +19,12 @@ func _ready() -> void:
 	_stop.pressed.connect(_on_stop)
 	_pause.pressed.connect(_on_pause)
 	_reset.pressed.connect(func() -> void: SimLink.request("reset"))
-	BackendClient.connected.connect(func() -> void: BackendClient.request("list_sessions"))
+	BackendClient.connected.connect(func() -> void:
+		_message.text = ""
+		BackendClient.request("list_sessions"))
+	BackendClient.unreachable.connect(func(seconds: float) -> void:
+		if not BackendClient.is_connected_to_backend:
+			_message.text = "backend not reachable after %.0f s: run 'uv run --project tools simctl serve' by hand and check its output" % seconds)
 	BackendClient.disconnected.connect(_render_lights)
 	BackendClient.response.connect(_on_backend_response)
 	BackendClient.status.connect(func(_data: Dictionary) -> void: _render_lights())

@@ -33,9 +33,13 @@ render_target_update_mode = 4
 environment = SubResource("env")
 
 [node name="Caption" type="Label" parent="."]
-layout_mode = 2
+layout_mode = 1
+anchors_preset = 10
+anchor_right = 1.0
 offset_left = 8.0
 offset_top = 6.0
-offset_right = 600.0
+offset_right = -8.0
 offset_bottom = 30.0
-text = "Side view"
+grow_horizontal = 2
+clip_text = true
+text = "Chase view"

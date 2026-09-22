@@ -2,101 +2,107 @@
 
 [ext_resource type="Script" path="res://ui/input_panel.gd" id="1"]
 
-[node name="InputPanel" type="VBoxContainer"]
+[node name="InputTab" type="ScrollContainer"]
+size_flags_horizontal = 3
+size_flags_vertical = 3
+horizontal_scroll_mode = 0
+
+[node name="InputPanel" type="VBoxContainer" parent="."]
+layout_mode = 2
 size_flags_horizontal = 3
 size_flags_vertical = 3
 script = ExtResource("1")
 
-[node name="DeviceRow" type="HBoxContainer" parent="."]
+[node name="DeviceRow" type="HBoxContainer" parent="InputPanel"]
 layout_mode = 2
 
-[node name="Device" type="OptionButton" parent="DeviceRow"]
+[node name="Device" type="OptionButton" parent="InputPanel/DeviceRow"]
 layout_mode = 2
 size_flags_horizontal = 3
 
-[node name="Select" type="Button" parent="DeviceRow"]
+[node name="Select" type="Button" parent="InputPanel/DeviceRow"]
 layout_mode = 2
 text = "Use"
 
-[node name="Refresh" type="Button" parent="DeviceRow"]
+[node name="Refresh" type="Button" parent="InputPanel/DeviceRow"]
 layout_mode = 2
 text = "Refresh"
 
-[node name="DeviceStatus" type="Label" parent="."]
+[node name="DeviceStatus" type="Label" parent="InputPanel"]
 layout_mode = 2
 autowrap_mode = 3
 text = "(no device)"
 
-[node name="ChannelsTitle" type="Label" parent="."]
+[node name="ChannelsTitle" type="Label" parent="InputPanel"]
 layout_mode = 2
 text = "Channels sent to Betaflight"
 
-[node name="Channels" type="VBoxContainer" parent="."]
+[node name="Channels" type="VBoxContainer" parent="InputPanel"]
 layout_mode = 2
 
-[node name="RawTitle" type="Label" parent="."]
+[node name="RawTitle" type="Label" parent="InputPanel"]
 layout_mode = 2
 text = "Raw device"
 
-[node name="Raw" type="VBoxContainer" parent="."]
+[node name="Raw" type="VBoxContainer" parent="InputPanel"]
 layout_mode = 2
 
-[node name="MappingTitle" type="Label" parent="."]
+[node name="MappingTitle" type="Label" parent="InputPanel"]
 layout_mode = 2
 text = "Mapping (changes apply live)"
 
-[node name="Mapping" type="GridContainer" parent="."]
+[node name="Mapping" type="GridContainer" parent="InputPanel"]
 layout_mode = 2
 columns = 3
 
-[node name="Actions" type="HBoxContainer" parent="."]
+[node name="Actions" type="HBoxContainer" parent="InputPanel"]
 layout_mode = 2
 
-[node name="Calibrate" type="Button" parent="Actions"]
+[node name="Calibrate" type="Button" parent="InputPanel/Actions"]
 layout_mode = 2
 text = "Calibrate..."
 
-[node name="Wizard" type="VBoxContainer" parent="."]
+[node name="Wizard" type="VBoxContainer" parent="InputPanel"]
 layout_mode = 2
 
-[node name="Text" type="Label" parent="Wizard"]
+[node name="Text" type="Label" parent="InputPanel/Wizard"]
 layout_mode = 2
 autowrap_mode = 3
 text = ""
 
-[node name="Buttons" type="HBoxContainer" parent="Wizard"]
+[node name="Buttons" type="HBoxContainer" parent="InputPanel/Wizard"]
 layout_mode = 2
 
-[node name="Next" type="Button" parent="Wizard/Buttons"]
+[node name="Next" type="Button" parent="InputPanel/Wizard/Buttons"]
 layout_mode = 2
 text = "Next"
 
-[node name="Skip" type="Button" parent="Wizard/Buttons"]
+[node name="Skip" type="Button" parent="InputPanel/Wizard/Buttons"]
 layout_mode = 2
 text = "Skip"
 
-[node name="Cancel" type="Button" parent="Wizard/Buttons"]
+[node name="Cancel" type="Button" parent="InputPanel/Wizard/Buttons"]
 layout_mode = 2
 text = "Cancel"
 
-[node name="SaveRow" type="HBoxContainer" parent="."]
+[node name="SaveRow" type="HBoxContainer" parent="InputPanel"]
 layout_mode = 2
 
-[node name="Name" type="LineEdit" parent="SaveRow"]
+[node name="Name" type="LineEdit" parent="InputPanel/SaveRow"]
 layout_mode = 2
 size_flags_horizontal = 3
 placeholder_text = "profile name, e.g. my_radio"
 
-[node name="Default" type="CheckBox" parent="SaveRow"]
+[node name="Default" type="CheckBox" parent="InputPanel/SaveRow"]
 layout_mode = 2
 button_pressed = true
 text = "use by default"
 
-[node name="Save" type="Button" parent="SaveRow"]
+[node name="Save" type="Button" parent="InputPanel/SaveRow"]
 layout_mode = 2
 text = "Save"
 
-[node name="Message" type="Label" parent="."]
+[node name="Message" type="Label" parent="InputPanel"]
 layout_mode = 2
 autowrap_mode = 3
 text = ""

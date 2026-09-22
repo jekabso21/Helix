@@ -4,9 +4,26 @@ const CAMERA_FEED_WINDOW_SIZE := Vector2i(640, 360)
 
 var _camera_feed_window: Window = null
 
-@onready var _left_dock: Control = $Layout/Body/LeftDock
-@onready var _right_dock: Control = $Layout/Body/Center/RightDock
-@onready var _plots: Control = $Layout/Plots
+const LEFT_DOCK_FRACTION := 0.22
+const RIGHT_DOCK_FRACTION := 0.32
+
+@onready var _body: HSplitContainer = $Margin/Layout/Body
+@onready var _center: HSplitContainer = $Margin/Layout/Body/Center
+@onready var _left_dock: Control = $Margin/Layout/Body/LeftDock
+@onready var _right_dock: Control = $Margin/Layout/Body/Center/RightDock
+@onready var _plots: Control = $Margin/Layout/Plots
+
+
+func _ready() -> void:
+	resized.connect(_layout_for_size)
+	_layout_for_size.call_deferred()
+
+
+## Dock widths follow the window so nothing overflows on small or tiled windows
+func _layout_for_size() -> void:
+	var width := size.x
+	_body.split_offset = int(width * LEFT_DOCK_FRACTION)
+	_center.split_offset = int(-width * RIGHT_DOCK_FRACTION)
 
 
 func _unhandled_key_input(event: InputEvent) -> void:
@@ -41,6 +58,6 @@ func _toggle_camera_feed_window() -> void:
 	panel.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	_camera_feed_window.add_child(panel)
 	add_child(_camera_feed_window)
-	var main_viewport: SubViewport = $Layout/Body/Center/MainView/SubViewport
+	var main_viewport: SubViewport = $Margin/Layout/Body/Center/MainView/SubViewport
 	var feed_viewport: SubViewport = panel.get_node("Container/SubViewport")
 	feed_viewport.world_3d = main_viewport.world_3d

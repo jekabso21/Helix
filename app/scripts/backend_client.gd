@@ -6,6 +6,7 @@ signal disconnected()
 signal status(data: Dictionary)
 signal fc_status(data: Dictionary)
 signal response(method: String, ok: bool, result: Dictionary)
+signal unreachable(seconds: float)
 
 var host: String = "127.0.0.1"
 var port: int = 7740
@@ -18,6 +19,7 @@ var _buffer := PackedByteArray()
 var _next_id: int = 1
 var _pending: Dictionary = {}
 var _serve_pid: int = -1
+var _started_at_ms: int = 0
 var _reconnect_at_ms: int = 0
 
 
@@ -32,15 +34,25 @@ func _ready() -> void:
 
 
 func _exit_tree() -> void:
-	if _serve_pid > 0:
-		OS.kill(_serve_pid)
+	if _serve_pid > 0 and _tcp.get_status() == StreamPeerTCP.STATUS_CONNECTED:
+		# Ask the backend to stop the session and exit; killing the uv wrapper would orphan it
+		_tcp.put_data((JSON.stringify({"id": 0, "method": "shutdown", "params": {}}) + "\n").to_utf8_buffer())
+		_tcp.poll()
+		OS.delay_msec(200)
 
 
 func _start_serve() -> void:
-	var args := PackedStringArray(["run", "--project", "tools", "simctl", "serve", "--base-dir", repo_root(), "--port", str(port)])
-	_serve_pid = OS.create_process("uv", args, false)
+	# Godot's working directory is the app folder, so every path handed to uv must be absolute
+	var root := repo_root()
+	# setpriv makes the kernel send TERM to uv if this app dies without a chance to say shutdown
+	var args := PackedStringArray([
+		"--pdeathsig", "TERM", "uv", "run", "--project", root.path_join("tools"), "simctl",
+		"serve", "--base-dir", root, "--port", str(port),
+	])
+	_serve_pid = OS.create_process("setpriv", args, false)
 	if _serve_pid <= 0:
 		push_error("could not start simctl serve (is uv installed?)")
+	_started_at_ms = Time.get_ticks_msec()
 
 
 func _process(_delta: float) -> void:
@@ -60,6 +72,8 @@ func _process(_delta: float) -> void:
 		disconnected.emit()
 	if tcp_status != StreamPeerTCP.STATUS_CONNECTING and Time.get_ticks_msec() >= _reconnect_at_ms:
 		_reconnect_at_ms = Time.get_ticks_msec() + 500
+		if _started_at_ms > 0 and Time.get_ticks_msec() - _started_at_ms > 5000:
+			unreachable.emit((Time.get_ticks_msec() - _started_at_ms) / 1000.0)
 		_tcp = StreamPeerTCP.new()
 		_tcp.connect_to_host(host, port)
 

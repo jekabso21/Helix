@@ -17,117 +17,125 @@ grow_horizontal = 2
 grow_vertical = 2
 script = ExtResource("1")
 
-[node name="Layout" type="VBoxContainer" parent="."]
+[node name="Margin" type="MarginContainer" parent="."]
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
+theme_override_constants/margin_left = 8
+theme_override_constants/margin_top = 6
+theme_override_constants/margin_right = 8
+theme_override_constants/margin_bottom = 6
 
-[node name="Toolbar" type="HBoxContainer" parent="Layout"]
+[node name="Layout" type="VBoxContainer" parent="Margin"]
+layout_mode = 2
+
+[node name="Toolbar" type="HBoxContainer" parent="Margin/Layout"]
 layout_mode = 2
 script = ExtResource("3")
 
-[node name="Session" type="OptionButton" parent="Layout/Toolbar"]
-custom_minimum_size = Vector2(200, 0)
+[node name="Session" type="OptionButton" parent="Margin/Layout/Toolbar"]
+custom_minimum_size = Vector2(140, 0)
+fit_to_longest_item = false
 layout_mode = 2
 
-[node name="Start" type="Button" parent="Layout/Toolbar"]
+[node name="Start" type="Button" parent="Margin/Layout/Toolbar"]
 layout_mode = 2
 disabled = true
 text = "Start"
 
-[node name="Stop" type="Button" parent="Layout/Toolbar"]
+[node name="Stop" type="Button" parent="Margin/Layout/Toolbar"]
 layout_mode = 2
 disabled = true
 text = "Stop"
 
-[node name="Pause" type="Button" parent="Layout/Toolbar"]
+[node name="Pause" type="Button" parent="Margin/Layout/Toolbar"]
 layout_mode = 2
 disabled = true
 text = "Pause"
 
-[node name="Reset" type="Button" parent="Layout/Toolbar"]
+[node name="Reset" type="Button" parent="Margin/Layout/Toolbar"]
 layout_mode = 2
 disabled = true
 text = "Reset"
 
-[node name="Separator" type="VSeparator" parent="Layout/Toolbar"]
+[node name="Separator" type="VSeparator" parent="Margin/Layout/Toolbar"]
 layout_mode = 2
 
-[node name="SimTime" type="Label" parent="Layout/Toolbar"]
+[node name="SimTime" type="Label" parent="Margin/Layout/Toolbar"]
 custom_minimum_size = Vector2(110, 0)
 layout_mode = 2
 text = "t 00:00.000"
 
-[node name="Message" type="Label" parent="Layout/Toolbar"]
+[node name="Message" type="Label" parent="Margin/Layout/Toolbar"]
 layout_mode = 2
 size_flags_horizontal = 3
+clip_text = true
 text = ""
 
-[node name="Lights" type="Label" parent="Layout/Toolbar"]
+[node name="Lights" type="Label" parent="Margin/Layout/Toolbar"]
 layout_mode = 2
 text = "backend ○   BF ○   core ○   api ○"
 
-[node name="Body" type="HSplitContainer" parent="Layout"]
+[node name="Body" type="HSplitContainer" parent="Margin/Layout"]
 layout_mode = 2
 size_flags_vertical = 3
-split_offset = 260
 
-[node name="LeftDock" type="TabContainer" parent="Layout/Body"]
-custom_minimum_size = Vector2(240, 0)
+[node name="LeftDock" type="TabContainer" parent="Margin/Layout/Body"]
+custom_minimum_size = Vector2(180, 0)
+clip_tabs = true
 layout_mode = 2
 
-[node name="Input" parent="Layout/Body/LeftDock" instance=ExtResource("7")]
+[node name="Input" parent="Margin/Layout/Body/LeftDock" instance=ExtResource("7")]
 layout_mode = 2
 
-[node name="Drone" parent="Layout/Body/LeftDock" instance=ExtResource("2")]
+[node name="Drone" parent="Margin/Layout/Body/LeftDock" instance=ExtResource("2")]
 visible = false
 layout_mode = 2
 title = "Drone: parts, CG preview, apply"
 
-[node name="Environment" parent="Layout/Body/LeftDock" instance=ExtResource("2")]
+[node name="Environment" parent="Margin/Layout/Body/LeftDock" instance=ExtResource("2")]
 visible = false
 layout_mode = 2
 title = "Environment: wind, weather, time of day"
 
-[node name="Failures" parent="Layout/Body/LeftDock" instance=ExtResource("2")]
+[node name="Failures" parent="Margin/Layout/Body/LeftDock" instance=ExtResource("2")]
 visible = false
 layout_mode = 2
 title = "Failures: inject and clear"
 
-[node name="Scenario" parent="Layout/Body/LeftDock" instance=ExtResource("2")]
+[node name="Scenario" parent="Margin/Layout/Body/LeftDock" instance=ExtResource("2")]
 visible = false
 layout_mode = 2
 title = "Scenario: load, run, metrics"
 
-[node name="Outputs" parent="Layout/Body/LeftDock" instance=ExtResource("2")]
+[node name="Outputs" parent="Margin/Layout/Body/LeftDock" instance=ExtResource("2")]
 visible = false
 layout_mode = 2
 title = "Outputs: video outputs per camera"
 
-[node name="Center" type="HSplitContainer" parent="Layout/Body"]
+[node name="Center" type="HSplitContainer" parent="Margin/Layout/Body"]
 layout_mode = 2
 size_flags_horizontal = 3
-split_offset = -340
 
-[node name="MainView" parent="Layout/Body/Center" instance=ExtResource("4")]
+[node name="MainView" parent="Margin/Layout/Body/Center" instance=ExtResource("4")]
 layout_mode = 2
 
-[node name="RightDock" type="VSplitContainer" parent="Layout/Body/Center"]
-custom_minimum_size = Vector2(320, 0)
+[node name="RightDock" type="VSplitContainer" parent="Margin/Layout/Body/Center"]
+custom_minimum_size = Vector2(220, 0)
 layout_mode = 2
 
-[node name="CameraFeed" parent="Layout/Body/Center/RightDock" instance=ExtResource("5") node_paths=PackedStringArray("world_view_path")]
+[node name="CameraFeed" parent="Margin/Layout/Body/Center/RightDock" instance=ExtResource("5") node_paths=PackedStringArray("world_view_path")]
 layout_mode = 2
 world_view_path = NodePath("../../MainView")
 
-[node name="Telemetry" parent="Layout/Body/Center/RightDock" instance=ExtResource("6")]
+[node name="Telemetry" parent="Margin/Layout/Body/Center/RightDock" instance=ExtResource("6")]
 layout_mode = 2
 
-[node name="Plots" parent="Layout" instance=ExtResource("2")]
-custom_minimum_size = Vector2(0, 100)
+[node name="Plots" parent="Margin/Layout" instance=ExtResource("2")]
+custom_minimum_size = Vector2(0, 70)
 layout_mode = 2
 size_flags_vertical = 0
 title = "Live plots (last 10 s): motor outputs | body rates | battery"
