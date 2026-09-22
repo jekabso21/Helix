@@ -16,8 +16,10 @@ add_library(fpvsim_simcore STATIC
     src/api/protocol.cpp
     src/bridge/betaflight.cpp
     src/config/session.cpp
+    src/input/control.cpp
     src/input/joystick.cpp
     src/input/mapping.cpp
+    src/input/mapping_json.cpp
     src/io/io_thread.cpp
     src/log/csv_log.cpp
     src/net/udp_socket.cpp

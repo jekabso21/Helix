@@ -5,10 +5,12 @@
 #include <cmath>
 #include <memory>
 #include <numbers>
+#include <string>
 #include <thread>
 
 #include <fpvsim/bridge/betaflight.hpp>
 #include <fpvsim/env/atmosphere.hpp>
+#include <fpvsim/input/control.hpp>
 #include <fpvsim/input/joystick.hpp>
 #include <fpvsim/io/io_thread.hpp>
 #include <fpvsim/pilot/altitude_hold.hpp>
@@ -39,7 +41,8 @@ struct LoopCounters {
 Snapshot make_snapshot(SimTime t, std::int64_t step_index, const Vehicle& vehicle,
                        const StepResult& result, const bf::MotorCommands& commands,
                        const bf::RcChannels& rc, bool paused, double air_density,
-                       const LoopCounters& counters, const bf::LinkCounters& link) {
+                       const LoopCounters& counters, const bf::LinkCounters& link,
+                       const input::DeviceState& device, const input::DeviceInfo& device_info) {
   const VehicleState& state = vehicle.state();
   const auto& b = state.body;
   Snapshot s{};
@@ -57,6 +60,16 @@ Snapshot make_snapshot(SimTime t, std::int64_t step_index, const Vehicle& vehicl
     s.motor_thrust_n[i] = result.motors[i].thrust_n;
   }
   s.rc_channels_us = rc;
+  for (std::size_t i = 0; i < input::kMaxAxes; ++i) {
+    s.raw_axes[i] = static_cast<float>(device.axes[i]);
+  }
+  for (std::size_t i = 0; i < input::kMaxButtons; ++i) {
+    s.raw_buttons[i] = device.buttons[i] ? 1 : 0;
+  }
+  s.raw_axis_count = static_cast<std::uint8_t>(std::min(device_info.axis_count, input::kMaxAxes));
+  s.raw_button_count =
+      static_cast<std::uint8_t>(std::min(device_info.button_count, input::kMaxButtons));
+  s.device_connected = device_info.connected;
   s.armed = any_motor_running(commands);
   s.crashed = state.crashed;
   s.touching = result.touching;
@@ -75,7 +88,9 @@ Snapshot make_snapshot(SimTime t, std::int64_t step_index, const Vehicle& vehicl
 bool apply_commands(io::CommandQueue& commands_in, io::ResultQueue& results_out, SimTime t,
                     Vehicle& vehicle, const physics::RigidBodyState& spawn,
                     pilot::AltitudeHoldPilot& autopilot, bf::MotorCommands& commands,
-                    MotorCommandArray& motor_commands, bool& paused) {
+                    MotorCommandArray& motor_commands, bool& paused,
+                    input::InputControl& input_control, input::JoystickManager* joystick,
+                    input::InputMapping& mapping) {
   bool running = true;
   Command command{};
   while (commands_in.try_pop(command)) {
@@ -95,6 +110,24 @@ bool apply_commands(io::CommandQueue& commands_in, io::ResultQueue& results_out,
       case CommandType::kShutdown:
         running = false;
         break;
+      case CommandType::kSetInputMapping:
+        input_control.take_mapping(mapping);
+        break;
+      case CommandType::kSelectInputDevice: {
+        std::string name;
+        if (joystick != nullptr && input_control.take_device(name)) {
+          joystick->open(name);
+          mapping.device_name_contains = name;
+        }
+        break;
+      }
+    }
+    if (joystick != nullptr) {
+      input_control.publish_status(
+          input::InputStatus{.source = "gamepad",
+                             .device = joystick->info(),
+                             .mapping = mapping,
+                             .device_names = input::JoystickManager::device_names()});
     }
     results_out.try_push(CommandResult{
         .client = command.client, .request_id = command.request_id, .applied_at_ns = t.ns});
@@ -112,6 +145,17 @@ void feed_frozen_state(bf::BetaflightLink& link, const bf::FdmInput& last_fdm,
   if (wall_tick % rc_every == 0) {
     link.send_rc(last_fdm.sim_time_s, rc);
   }
+}
+
+bf::RcChannels read_rc(input::JoystickManager* joystick, const input::InputMapping& mapping,
+                       input::DeviceState& device, pilot::AltitudeHoldPilot& autopilot,
+                       double sim_time_s, double height_m, double climb_mps, bool armed,
+                       double dt_s) {
+  if (joystick != nullptr) {
+    device = joystick->poll();
+    return input::map_channels(mapping, device);
+  }
+  return autopilot.channels(sim_time_s, height_m, climb_mps, armed, dt_s);
 }
 
 }  // namespace
@@ -134,15 +178,25 @@ RunSummary run_realtime(const config::SessionConfig& session, const VehicleParam
   Vehicle vehicle(drone, spawn);
   bf::BetaflightLink link(session.betaflight);
   pilot::AltitudeHoldPilot autopilot(session.input.altitude_hold);
-  std::unique_ptr<input::Joystick> joystick;
-  if (session.input.source == "gamepad") {
-    joystick = std::make_unique<input::Joystick>(session.input.mapping.device_name_contains);
+  const bool use_joystick = session.input.source == "gamepad";
+  input::InputMapping mapping = session.input.mapping;
+  std::unique_ptr<input::JoystickManager> joystick;
+  input::InputControl input_control;
+  if (use_joystick) {
+    joystick = std::make_unique<input::JoystickManager>();
+    joystick->open(mapping.device_name_contains);
+    input_control.publish_status(
+        input::InputStatus{.source = session.input.source,
+                           .device = joystick->info(),
+                           .mapping = mapping,
+                           .device_names = input::JoystickManager::device_names()});
   }
 
   io::SnapshotQueue snapshots;
   io::CommandQueue commands_in;
   io::ResultQueue results_out;
-  io::IoThread io(io::IoConfig{.api_host = session.control_api.host,
+  io::IoThread io(input_control,
+                  io::IoConfig{.api_host = session.control_api.host,
                                .api_port = session.control_api.port,
                                .app_host = session.app.host,
                                .app_port = session.app.port,
@@ -157,6 +211,8 @@ RunSummary run_realtime(const config::SessionConfig& session, const VehicleParam
   bf::MotorCommands commands{};
   bf::RcChannels rc{};
   rc.fill(1000);
+  input::DeviceState device{};
+  input::DeviceInfo device_info = joystick ? joystick->info() : input::DeviceInfo{};
   MotorCommandArray motor_commands{};
   bf::FdmInput last_fdm{};
   bool have_fdm = false;
@@ -174,7 +230,7 @@ RunSummary run_realtime(const config::SessionConfig& session, const VehicleParam
     const auto step_begin = std::chrono::steady_clock::now();
 
     running = apply_commands(commands_in, results_out, t, vehicle, spawn, autopilot, commands,
-                             motor_commands, paused);
+                             motor_commands, paused, input_control, joystick.get(), mapping);
 
     link.poll_motors(commands);
     for (std::size_t i = 0; i < bf::kMotorCount; ++i) {
@@ -188,10 +244,8 @@ RunSummary run_realtime(const config::SessionConfig& session, const VehicleParam
 
     if (!paused) {
       if (step_index % rc_every == 0) {
-        rc = joystick ? input::map_channels(session.input.mapping, joystick->poll())
-                      : autopilot.channels(to_seconds(t), height_m, climb_mps,
-                                           any_motor_running(commands),
-                                           static_cast<double>(rc_every) * dt_s);
+        rc = read_rc(joystick.get(), mapping, device, autopilot, to_seconds(t), height_m, climb_mps,
+                     any_motor_running(commands), static_cast<double>(rc_every) * dt_s);
         link.send_rc(to_seconds(t), rc);
       }
       const physics::RigidBodyState state_before = before.body;
@@ -215,8 +269,12 @@ RunSummary run_realtime(const config::SessionConfig& session, const VehicleParam
       feed_frozen_state(link, last_fdm, rc, wall_tick, fdm_every, rc_every);
     }
 
+    if (joystick && step_index % session.physics_rate_hz == 0) {
+      device_info = joystick->info();
+    }
     if (!snapshots.try_push(make_snapshot(t, step_index, vehicle, result, commands, rc, paused,
-                                          air.density_kg_m3, counters, link.counters()))) {
+                                          air.density_kg_m3, counters, link.counters(), device,
+                                          device_info))) {
       ++dropped_snapshots;
     }
 

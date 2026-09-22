@@ -4,6 +4,7 @@
 #include <cstddef>
 #include <cstdint>
 
+#include <fpvsim/input/mapping.hpp>
 #include <fpvsim/physics/propulsion.hpp>
 
 namespace fpvsim::sim {
@@ -21,6 +22,11 @@ struct Snapshot {
   std::array<double, physics::kMaxMotors> motor_rpm;
   std::array<double, physics::kMaxMotors> motor_thrust_n;
   std::array<std::uint16_t, 16> rc_channels_us;
+  std::array<float, input::kMaxAxes> raw_axes;
+  std::array<std::uint8_t, input::kMaxButtons> raw_buttons;
+  std::uint8_t raw_axis_count;
+  std::uint8_t raw_button_count;
+  bool device_connected;
   bool armed;
   bool crashed;
   bool touching;
@@ -34,7 +40,14 @@ struct Snapshot {
   double step_time_max_us;
 };
 
-enum class CommandType : std::uint8_t { kReset, kPause, kResume, kShutdown };
+enum class CommandType : std::uint8_t {
+  kReset,
+  kPause,
+  kResume,
+  kShutdown,
+  kSetInputMapping,
+  kSelectInputDevice
+};
 
 struct Command {
   std::uint32_t client;

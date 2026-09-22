@@ -21,6 +21,7 @@
 
 #include <fpvsim/api/protocol.hpp>
 #include <fpvsim/frames.hpp>
+#include <fpvsim/input/mapping_json.hpp>
 #include <fpvsim/log/csv_log.hpp>
 #include <fpvsim/net/udp_socket.hpp>
 #include <fpvsim/proto/render_state.hpp>
@@ -35,6 +36,7 @@ constexpr std::size_t kMaxLineBytes = std::size_t{64} * 1024;
 struct Subscription {
   std::int64_t id;
   std::int64_t every_ticks;
+  std::string topic;
 };
 
 struct Client {
@@ -116,7 +118,8 @@ nlohmann::json telemetry_json(const sim::Snapshot& s, std::int64_t physics_rate_
           {"input",
            {{"source", input_source},
             {"channels_us", s.rc_channels_us},
-            {"armed_switch", s.rc_channels_us[4] > 1500}}},
+            {"armed_switch", s.rc_channels_us[4] > 1500},
+            {"device_connected", s.device_connected}}},
           {"sim",
            {{"mode", "realtime"},
             {"physics_rate_hz", physics_rate_hz},
@@ -150,8 +153,10 @@ proto::RenderState render_state_from(const sim::Snapshot& s) {
 
 class IoThread::Impl {
  public:
-  Impl(IoConfig config, SnapshotQueue& snapshots, CommandQueue& commands, ResultQueue& results)
-      : config_(std::move(config)),
+  Impl(input::InputControl& input_control, IoConfig config, SnapshotQueue& snapshots,
+       CommandQueue& commands, ResultQueue& results)
+      : input_control_(input_control),
+        config_(std::move(config)),
         snapshots_(snapshots),
         commands_(commands),
         results_(results),
@@ -198,8 +203,10 @@ class IoThread::Impl {
         for (const Subscription& sub : client.subscriptions) {
           if (tick_ % sub.every_ticks == 0) {
             const nlohmann::json data =
-                telemetry_json(s, config_.physics_rate_hz, config_.input_source);
-            write_to(client, api::event_line("telemetry", s.sim_time_ns, data));
+                sub.topic == "input_raw"
+                    ? input_raw_json(s)
+                    : telemetry_json(s, config_.physics_rate_hz, config_.input_source);
+            write_to(client, api::event_line(sub.topic, s.sim_time_ns, data));
           }
         }
       }
@@ -326,6 +333,19 @@ class IoThread::Impl {
       case api::Method::kUnsubscribe:
         unsubscribe(client, request);
         break;
+      case api::Method::kListInputDevices:
+        write_to(client,
+                 api::ok_response(request.id, {{"devices", input_control_.status().device_names}}));
+        break;
+      case api::Method::kGetInput:
+        write_to(client, api::ok_response(request.id, input_json()));
+        break;
+      case api::Method::kSetInputMapping:
+        set_input_mapping(client, request);
+        break;
+      case api::Method::kSelectInputDevice:
+        select_input_device(client, request);
+        break;
     }
   }
 
@@ -336,11 +356,58 @@ class IoThread::Impl {
     }
   }
 
+  nlohmann::json input_json() const {
+    const input::InputStatus status = input_control_.status();
+    return {{"source", config_.input_source},
+            {"device",
+             {{"name", status.device.name},
+              {"connected", status.device.connected},
+              {"axis_count", status.device.axis_count},
+              {"button_count", status.device.button_count}}},
+            {"devices", status.device_names},
+            {"mapping", input::mapping_to_json(status.mapping)}};
+  }
+
+  static nlohmann::json input_raw_json(const sim::Snapshot& s) {
+    const std::vector<float> axes(s.raw_axes.begin(), s.raw_axes.begin() + s.raw_axis_count);
+    const std::vector<int> buttons(s.raw_buttons.begin(),
+                                   s.raw_buttons.begin() + s.raw_button_count);
+    return {{"connected", s.device_connected},
+            {"axes", axes},
+            {"buttons", buttons},
+            {"channels_us", s.rc_channels_us}};
+  }
+
+  void set_input_mapping(Client& client, const api::Request& request) {
+    if (!request.params.contains("mapping")) {
+      write_to(client, api::error_response(request.id, "invalid_params", "missing mapping"));
+      return;
+    }
+    try {
+      input_control_.request_mapping(input::mapping_from_json(request.params["mapping"]));
+    } catch (const std::exception& error) {
+      write_to(client, api::error_response(request.id, "invalid_params", error.what()));
+      return;
+    }
+    queue_command(client, request.id, sim::CommandType::kSetInputMapping);
+  }
+
+  void select_input_device(Client& client, const api::Request& request) {
+    const auto& params = request.params;
+    if (!params.contains("name_contains") || !params["name_contains"].is_string()) {
+      write_to(client, api::error_response(request.id, "invalid_params", "missing name_contains"));
+      return;
+    }
+    input_control_.request_device(params["name_contains"].get<std::string>());
+    queue_command(client, request.id, sim::CommandType::kSelectInputDevice);
+  }
+
   void subscribe(Client& client, const api::Request& request) {
     const auto& params = request.params;
-    if (!params.contains("topic") || params["topic"] != "telemetry") {
-      write_to(client,
-               api::error_response(request.id, "invalid_params", "topic must be 'telemetry'"));
+    const std::string topic = params.value("topic", "");
+    if (topic != "telemetry" && topic != "input_raw") {
+      write_to(client, api::error_response(request.id, "invalid_params",
+                                           "topic must be 'telemetry' or 'input_raw'"));
       return;
     }
     const double rate_hz = params.value("rate_hz", 10.0);
@@ -351,7 +418,8 @@ class IoThread::Impl {
     const auto every =
         static_cast<std::int64_t>(static_cast<double>(config_.physics_rate_hz) / rate_hz);
     const std::int64_t id = next_subscription_id_++;
-    client.subscriptions.push_back({.id = id, .every_ticks = std::max<std::int64_t>(1, every)});
+    client.subscriptions.push_back(
+        {.id = id, .every_ticks = std::max<std::int64_t>(1, every), .topic = topic});
     write_to(client, api::ok_response(request.id, {{"subscription_id", id}}));
   }
 
@@ -401,6 +469,7 @@ class IoThread::Impl {
     failed_.clear();
   }
 
+  input::InputControl& input_control_;
   IoConfig config_;
   SnapshotQueue& snapshots_;
   CommandQueue& commands_;
@@ -421,9 +490,9 @@ class IoThread::Impl {
   IoStats stats_;
 };
 
-IoThread::IoThread(IoConfig config, SnapshotQueue& snapshots, CommandQueue& commands,
-                   ResultQueue& results)
-    : impl_(std::make_unique<Impl>(std::move(config), snapshots, commands, results)),
+IoThread::IoThread(input::InputControl& input_control, IoConfig config, SnapshotQueue& snapshots,
+                   CommandQueue& commands, ResultQueue& results)
+    : impl_(std::make_unique<Impl>(input_control, std::move(config), snapshots, commands, results)),
       thread_([this](const std::stop_token& stop) { impl_->run(stop); }) {}
 
 IoThread::~IoThread() {

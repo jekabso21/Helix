@@ -17,6 +17,10 @@ const std::map<std::string, Method>& method_names() {
       {"shutdown", Method::kShutdown},
       {"subscribe", Method::kSubscribe},
       {"unsubscribe", Method::kUnsubscribe},
+      {"list_input_devices", Method::kListInputDevices},
+      {"get_input", Method::kGetInput},
+      {"set_input_mapping", Method::kSetInputMapping},
+      {"select_input_device", Method::kSelectInputDevice},
   };
   return names;
 }

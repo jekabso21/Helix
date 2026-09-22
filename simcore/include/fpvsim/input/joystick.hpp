@@ -8,25 +8,33 @@
 
 namespace fpvsim::input {
 
-// SDL2 joystick opened by a substring of its name; construction throws if none matches
-class Joystick {
+struct DeviceInfo {
+  std::string name;
+  bool connected;
+  std::size_t axis_count;
+  std::size_t button_count;
+};
+
+// SDL2 joystick access from one thread: open by a substring of the name, poll without blocking
+class JoystickManager {
  public:
-  explicit Joystick(const std::string& name_contains);
-  ~Joystick();
-  Joystick(const Joystick&) = delete;
-  Joystick& operator=(const Joystick&) = delete;
+  JoystickManager();
+  ~JoystickManager();
+  JoystickManager(const JoystickManager&) = delete;
+  JoystickManager& operator=(const JoystickManager&) = delete;
 
-  // Reads the current axes and buttons without blocking
+  // Closes any open device and opens the first whose name contains the text; false if none
+  bool open(const std::string& name_contains);
+  void close();
+  [[nodiscard]] DeviceInfo info() const;
+  [[nodiscard]] static std::vector<std::string> device_names();
+
+  // Neutral state when no device is open or it was unplugged
   DeviceState poll() noexcept;
-  [[nodiscard]] const std::string& name() const { return name_; }
-  [[nodiscard]] bool connected() const noexcept;
-
-  static std::vector<std::string> connected_names();
 
  private:
   struct Impl;
   std::unique_ptr<Impl> impl_;
-  std::string name_;
 };
 
 }  // namespace fpvsim::input

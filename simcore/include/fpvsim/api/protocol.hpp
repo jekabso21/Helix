@@ -19,6 +19,10 @@ enum class Method : std::uint8_t {
   kShutdown,
   kSubscribe,
   kUnsubscribe,
+  kListInputDevices,
+  kGetInput,
+  kSetInputMapping,
+  kSelectInputDevice,
 };
 
 struct Request {

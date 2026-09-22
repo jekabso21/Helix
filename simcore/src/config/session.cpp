@@ -8,6 +8,8 @@
 
 #include <nlohmann/json.hpp>
 
+#include <fpvsim/input/mapping_json.hpp>
+
 namespace fpvsim::config {
 
 namespace {
@@ -33,6 +35,8 @@ class Reader {
     }
     return {node_[i], path_ + "[" + std::to_string(i) + "]"};
   }
+
+  [[nodiscard]] const json& raw() const { return node_; }
 
   [[nodiscard]] bool has(const std::string& key) const {
     return node_.is_object() && node_.contains(key);
@@ -110,36 +114,6 @@ std::string read_file(const std::filesystem::path& path) {
   return buffer.str();
 }
 
-input::InputMapping parse_mapping(const Reader& node) {
-  input::InputMapping mapping{};
-  mapping.device_name_contains = node.at("device_name_contains").get<std::string>();
-  const Reader channels = node.at("channels");
-  for (const std::string& name : channels.keys()) {
-    const std::optional<std::size_t> index = input::channel_index(name);
-    if (!index) {
-      throw std::runtime_error("mapping.channels: unknown channel '" + name + "'");
-    }
-    const Reader source = channels.at(name);
-    const bool is_axis = source.has("axis");
-    const bool is_button = source.has("button");
-    if (is_axis == is_button) {
-      throw std::runtime_error("mapping.channels." + name + ": exactly one of axis or button");
-    }
-    mapping.channels[*index] = input::ChannelSource{
-        .kind = is_axis ? input::SourceKind::kAxis : input::SourceKind::kButton,
-        .index = source.at(is_axis ? "axis" : "button").get<std::size_t>(),
-        .inverted = source.at("inverted").get<bool>(),
-        .deadband = source.at("deadband").number()};
-  }
-  const std::optional<std::size_t> arm =
-      input::channel_index(node.at("arm_channel").get<std::string>());
-  if (!arm) {
-    throw std::runtime_error("mapping.arm_channel: unknown channel");
-  }
-  mapping.arm_channel = *arm;
-  return mapping;
-}
-
 void check_schema(const Reader& root) {
   const int version = root.at("schema_version").get<int>();
   if (version != kSchemaVersion) {
@@ -200,7 +174,7 @@ SessionConfig parse_session(const std::string& json_text, const std::filesystem:
                                .integral_limit_us = hold.at("integral_limit_us").number(),
                                .arm_delay_s = hold.at("arm_delay_s").number()};
   } else if (cfg.input.source == "gamepad") {
-    cfg.input.mapping = parse_mapping(input.at("mapping"));
+    cfg.input.mapping = input::mapping_from_json(input.at("mapping").raw());
   } else {
     throw std::runtime_error("input.source must be 'altitude_hold' or 'gamepad'");
   }
