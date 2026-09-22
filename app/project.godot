@@ -9,6 +9,8 @@ config/features=PackedStringArray("4.7", "Forward Plus")
 
 [autoload]
 
+SimLink="*res://scripts/sim_link.gd"
+BackendClient="*res://scripts/backend_client.gd"
 DevScreenshot="*res://scripts/dev_screenshot.gd"
 
 [debug]

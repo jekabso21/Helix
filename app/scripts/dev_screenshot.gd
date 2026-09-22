@@ -1,5 +1,5 @@
 extends Node
-## Dev autoload: "./scripts/run_app.sh -- --screenshot <path>" saves the viewport and quits
+## Dev autoload: "./scripts/run_app.sh -- --screenshot <path> [--screenshot-after <s>]" saves the viewport and quits
 
 const ARGUMENT := "--screenshot"
 const SETTLE_FRAMES := 20
@@ -10,10 +10,16 @@ func _ready() -> void:
 	var index := args.find(ARGUMENT)
 	if index < 0 or index + 1 >= args.size():
 		return
-	_capture.call_deferred(args[index + 1])
+	var delay_index := args.find("--screenshot-after")
+	var delay_s := 0.0
+	if delay_index >= 0 and delay_index + 1 < args.size():
+		delay_s = float(args[delay_index + 1])
+	_capture.call_deferred(args[index + 1], delay_s)
 
 
-func _capture(path: String) -> void:
+func _capture(path: String, delay_s: float) -> void:
+	if delay_s > 0.0:
+		await get_tree().create_timer(delay_s).timeout
 	for _frame in SETTLE_FRAMES:
 		await get_tree().process_frame
 	await RenderingServer.frame_post_draw

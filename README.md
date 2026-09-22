@@ -20,6 +20,7 @@ git submodule update --init third_party/betaflight
 cmake --preset dev && cmake --build --preset dev
 ctest --preset dev
 cd tools && uv sync && uv run pytest && cd ..    # add -m integration for the SITL flight test
+godot --headless --path app -s tests/run_tests.gd  # GDScript unit tests
 pre-commit install
 ```
 
@@ -29,7 +30,8 @@ CMake presets: `dev` (GCC, Debug, ASan and UBSan), `clang` (Clang, warnings as e
 ## Run
 
 ```bash
-./scripts/run_app.sh                                        # GUI app (placeholder layout so far)
+./scripts/run_app.sh                                        # GUI app; starts simctl serve itself
+./scripts/run_app.sh -- --attach                            # GUI attached to a running simctl run
 ./scripts/run_app.sh -- --screenshot /tmp/app.png           # save the window content and quit
 uv run --project tools simctl validate configs/sessions/ci_hover.yaml
 uv run --project tools simctl run configs/sessions/ci_hover.yaml --headless   # hover test flight, run dir in runs/

@@ -36,10 +36,11 @@ func _toggle_camera_feed_window() -> void:
 	_camera_feed_window.title = "fpvsim camera feed"
 	_camera_feed_window.size = CAMERA_FEED_WINDOW_SIZE
 	_camera_feed_window.close_requested.connect(_toggle_camera_feed_window)
-	var label := Label.new()
-	label.text = "Camera feed"
-	label.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	_camera_feed_window.add_child(label)
+	var panel: Control = load("res://ui/camera_panel.tscn").instantiate()
+	panel.set("world_view_path", NodePath(""))
+	panel.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_camera_feed_window.add_child(panel)
 	add_child(_camera_feed_window)
+	var main_viewport: SubViewport = $Layout/Body/Center/MainView/SubViewport
+	var feed_viewport: SubViewport = panel.get_node("Container/SubViewport")
+	feed_viewport.world_3d = main_viewport.world_3d
