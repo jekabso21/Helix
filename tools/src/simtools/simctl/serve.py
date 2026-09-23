@@ -24,6 +24,7 @@ from simtools.modelc import compile_drone, export_glb, to_json
 from simtools.modelc.overrides import OverrideError, apply_overrides, summary
 from simtools.msp import MspCommand, MspError, parse_status_ex
 from simtools.simctl.launcher import LaunchError, ProcessSet, find_simcore, start_processes
+from simtools.simctl.spawner import Spawner
 from simtools.sitl import HOST, connect_uart
 
 API_VERSION = 1
@@ -49,6 +50,9 @@ class Supervisor:
         self._subscribers: list[tuple[str, queue.Queue[Json]]] = []
         self._fc_thread: threading.Thread | None = None
         self._fc_stop = threading.Event()
+        # session processes carry a parent-death signal; forked from a request handler thread
+        # they died as soon as the client that asked for them hung up
+        self._spawner = Spawner()
 
     # queries
 
@@ -175,7 +179,7 @@ class Supervisor:
                 self._model_revision = 0
                 self._model_overrides = {}
             self._publish("status", self.status())
-            processes = start_processes(resolved, run_dir, simcore)
+            processes = self._spawner.run(lambda: start_processes(resolved, run_dir, simcore))
         except (ConfigError, LaunchError, OSError) as error:
             with self._lock:
                 self._state = "idle"
@@ -201,6 +205,7 @@ class Supervisor:
 
     def shutdown(self) -> None:
         self.stop()
+        self._spawner.close()
 
     # drone model
 

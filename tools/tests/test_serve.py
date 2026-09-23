@@ -1,6 +1,7 @@
 import json
 import socket
 import threading
+import time
 from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
@@ -146,3 +147,53 @@ def test_drone_preview_without_a_session_needs_a_path(server: Server) -> None:
     )
     assert bad["error"]["code"] == "invalid_params"
     assert client.request("apply_drone", {"overrides": {}})["error"]["code"] == "invalid_state"
+
+
+@pytest.mark.integration
+@pytest.mark.skipif(
+    not (REPO_ROOT / "build/betaflight/betaflight_SITL.elf").exists(), reason="SITL not built"
+)
+def test_session_outlives_the_client_that_started_it() -> None:
+    """Drives the real backend process, as the app does; an in-process Server never showed it."""
+    import shutil
+    import subprocess
+    import sys
+
+    from simtools.sitl import sitl_port_busy
+
+    if sitl_port_busy():
+        pytest.skip("a Betaflight SITL is already running on TCP 5761")
+    port = free_port()
+    uv = shutil.which("uv")
+    command = (
+        [uv, "run", "--project", str(REPO_ROOT / "tools"), "simctl"]
+        if uv
+        else [sys.executable, "-m", "simtools.simctl.cli"]
+    ) + ["serve", "--base-dir", str(REPO_ROOT), "--port", str(port)]
+    backend = subprocess.Popen(command, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
+    try:
+        deadline = time.monotonic() + 10.0
+        while True:
+            try:
+                starter = LineClient(port)
+                break
+            except OSError:
+                assert time.monotonic() < deadline, "backend did not come up"
+                time.sleep(0.2)
+        assert starter.request("start", {"path": "configs/sessions/ci_hover.yaml"})["ok"]
+        starter.close()  # the handler thread of this connection ends here
+        time.sleep(6.0)
+        watcher = LineClient(port)
+        processes = watcher.request("status")["result"]["processes"]
+        watcher.request("stop")
+        watcher.request("shutdown")
+        watcher.close()
+        assert [(p["name"], p["state"]) for p in processes] == [
+            ("betaflight", "running"),
+            ("simcore", "running"),
+        ], processes
+    finally:
+        try:
+            backend.wait(timeout=10.0)
+        except subprocess.TimeoutExpired:
+            backend.kill()

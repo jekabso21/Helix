@@ -10,6 +10,7 @@ func _initialize() -> void:
 	_test_render_state_golden()
 	_test_drone_glb()
 	_test_plot_series()
+	_test_plots_panel()
 	print("%d checks, %d failures" % [checks, failures])
 	quit(1 if failures > 0 else 0)
 
@@ -93,3 +94,24 @@ func _test_plot_series() -> void:
 	check(s.min_value() == 9.5 and s.max_value() == 14.5, "min and max over the window")
 	s.push(3.0, 1.0)
 	check(s.size() == 1 and s.latest() == 1.0, "time going backwards clears the window")
+
+
+func _test_plots_panel() -> void:
+	var panel: Variant = load("res://ui/plots_panel.gd").new()
+	panel._ready()
+	var sample := {
+		"sim": {"sim_time_ns": 2_000_000_000, "paused": false},
+		"motors": [{"command": 0.2}, {"command": 0.3}, {"command": 0.4}, {"command": 0.5}],
+		"flight": {"rates_frd_radps": [0.1, -0.2, 0.3]},
+		"battery": {"voltage_v": 24.5, "current_a": 6.0},
+	}
+	panel._on_telemetry(sample)
+	sample["sim"]["sim_time_ns"] = 2_100_000_000
+	panel._on_telemetry(sample)
+	check(panel._motors[3].size() == 2 and absf(panel._motors[3].latest() - 0.5) < 1e-6, "motor series filled")
+	check(absf(panel._rates[1].latest() - rad_to_deg(-0.2)) < 1e-6, "rates stored in deg/s")
+	check(panel._battery[0].latest() == 24.5 and panel._battery[1].latest() == 6.0, "battery series filled")
+	sample["sim"]["paused"] = true
+	panel._on_telemetry(sample)
+	check(panel._motors[0].size() == 2, "paused telemetry is not appended")
+	panel.free()

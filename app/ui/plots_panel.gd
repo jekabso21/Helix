@@ -23,13 +23,6 @@ func _ready() -> void:
 		_battery.append(PlotSeries.new(WINDOW_S))
 	_font = get_theme_default_font()
 	SimLink.telemetry.connect(_on_telemetry)
-	SimLink.api_disconnected.connect(_clear)
-
-
-func _clear() -> void:
-	for s in _motors + _rates + _battery:
-		s.clear()
-	queue_redraw()
 
 
 func _on_telemetry(data: Dictionary) -> void:
@@ -54,7 +47,7 @@ func _on_telemetry(data: Dictionary) -> void:
 func _draw() -> void:
 	var width := (size.x - 4.0 * MARGIN) / 3.0
 	var height := size.y - 2.0 * MARGIN
-	var motor_label := "motors %%  " + "  ".join(_motors.map(func(s: PlotSeries) -> String: return "%.0f" % (100.0 * s.latest())))
+	var motor_label := "motors %  " + "  ".join(_motors.map(func(s: PlotSeries) -> String: return "%.0f" % (100.0 * s.latest())))
 	_draw_strip(Rect2(MARGIN, MARGIN, width, height), _motors, MOTOR_COLORS, 0.0, 1.0, motor_label)
 	var span := 50.0
 	for s in _rates:
