@@ -177,10 +177,10 @@
   "battery": {
     "cells": 6,
     "capacity_ah": 1.1,
-    "cell_resistance_ohm": 0.008,
+    "cell_resistance_ohm": 0.006,
     "connector_resistance_ohm": 0.002,
     "avionics_current_a": 0.8,
-    "esc_cutoff_v": 15.0,
+    "esc_cutoff_v": 8.0,
     "initial_soc": 1.0,
     "rc_resistance_ohm": 0.0,
     "rc_capacitance_f": 0.0,

@@ -37,6 +37,7 @@ struct VehicleState {
   physics::RigidBodyState body;
   std::array<double, physics::kMaxMotors> motor_speed_radps;
   std::array<double, physics::kMaxMotors> motor_consumed_ah;
+  std::array<double, physics::kMaxMotors> motor_bus_current_a;
   physics::BatteryState battery;
   bool crashed;
 };

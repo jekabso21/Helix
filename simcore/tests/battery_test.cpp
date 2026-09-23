@@ -49,7 +49,7 @@ TEST(BatteryTest, SocDropsByChargeOverCapacity) {
   EXPECT_NEAR(state.consumed_ah, 0.55, 1e-9);
 }
 
-TEST(BatteryTest, AvionicsCurrentAlwaysFlowsAndCutoffLatches) {
+TEST(BatteryTest, AvionicsCurrentAlwaysFlowsAndCutoffHasHysteresis) {
   physics::BatteryParams params = quad::quad_battery();
   params.esc_cutoff_v = 24.0;
   physics::BatteryState state = physics::initial_battery(params);
@@ -58,8 +58,24 @@ TEST(BatteryTest, AvionicsCurrentAlwaysFlowsAndCutoffLatches) {
   EXPECT_FALSE(state.cutoff);
   state = physics::step_battery(params, state, 80.0, 0.001);
   EXPECT_TRUE(state.cutoff);
+  state = physics::step_battery(params, state, 30.0, 0.001);  // 25.2 - 30 * 0.05 = 23.7 V
+  EXPECT_TRUE(state.cutoff);                                  // still below cutoff + 1 V
   state = physics::step_battery(params, state, 0.0, 0.001);
-  EXPECT_TRUE(state.cutoff);
+  EXPECT_FALSE(state.cutoff);  // recovered above 25 V
+}
+
+TEST(BatteryTest, SolvedBusVoltageIsConsistentWithTheCurrentItCauses) {
+  physics::BatteryParams params = quad::quad_battery();
+  params.avionics_current_a = 0.0;
+  const physics::BatteryState state = physics::initial_battery(params);
+  const double conductance = 22.2;  // four DC motors at full throttle, 0.18 ohm each
+  const double fixed = -300.0;      // back-EMF term
+  const double v = physics::solve_bus_voltage(params, state, fixed, conductance);
+  const double current = fixed + conductance * v;
+  const double r = 6.0 * params.cell_resistance_ohm + params.connector_resistance_ohm;
+  EXPECT_NEAR(v, 6.0 * 4.20 - r * current, 1e-9);
+  EXPECT_LT(v, 6.0 * 4.20);
+  EXPECT_GT(v, 15.0);
 }
 
 TEST(BatteryTest, TransientBranchRelaxesWithItsTimeConstant) {

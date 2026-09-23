@@ -13,6 +13,24 @@ double open_circuit_voltage(const BatteryParams& params, double soc) {
   return params.ocv_v[lower] + (params.ocv_v[upper] - params.ocv_v[lower]) * t;
 }
 
+namespace {
+
+double pack_resistance(const BatteryParams& params) {
+  return static_cast<double>(params.cells) * params.cell_resistance_ohm +
+         params.connector_resistance_ohm;
+}
+
+}  // namespace
+
+double solve_bus_voltage(const BatteryParams& params, const BatteryState& state,
+                         double fixed_current_a, double conductance_s) {
+  const double cells = static_cast<double>(params.cells);
+  const double open = cells * (open_circuit_voltage(params, state.soc) - state.v_rc);
+  const double r = pack_resistance(params);
+  // V = open - r (I_fixed + G V)
+  return std::max((open - r * fixed_current_a) / (1.0 + r * conductance_s), 0.0);
+}
+
 BatteryState initial_battery(const BatteryParams& params) {
   const double cells = static_cast<double>(params.cells);
   return BatteryState{.soc = params.initial_soc,
@@ -43,7 +61,8 @@ BatteryState step_battery(const BatteryParams& params, const BatteryState& state
                       .current_a = current,
                       .bus_voltage_v = bus,
                       .consumed_ah = state.consumed_ah + current * dt_s / 3600.0,
-                      .cutoff = state.cutoff || bus < params.esc_cutoff_v};
+                      .cutoff = state.cutoff ? bus < params.esc_cutoff_v + kCutoffHysteresisV
+                                             : bus < params.esc_cutoff_v};
 }
 
 }  // namespace fpvsim::physics

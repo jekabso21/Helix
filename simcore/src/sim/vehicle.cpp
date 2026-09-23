@@ -14,6 +14,7 @@ Vehicle::Vehicle(VehicleParams params, const physics::RigidBodyState& spawn)
       state_{.body = spawn,
              .motor_speed_radps = {},
              .motor_consumed_ah = {},
+             .motor_bus_current_a = {},
              .battery = physics::initial_battery(params_.battery),
              .crashed = false},
       imu_noise_(params_.imu_noise) {}
@@ -22,6 +23,7 @@ void Vehicle::reset(const physics::RigidBodyState& spawn) {
   state_ = VehicleState{.body = spawn,
                         .motor_speed_radps = {},
                         .motor_consumed_ah = {},
+                        .motor_bus_current_a = {},
                         .battery = physics::initial_battery(params_.battery),
                         .crashed = false};
 }
@@ -45,6 +47,22 @@ StepResult Vehicle::step(const MotorCommandArray& commands, const env::Air& air,
   const physics::RigidBodyState& body = state_.body;
   const Eigen::Vector3d air_velocity_frd = body.q_ned_from_frd.conjugate() * body.velocity_ned;
   const bool motors_off = state_.crashed || state_.battery.cutoff;
+  // bus voltage and motor currents depend on each other; DC motors are linear in the voltage
+  double fixed_current = params_.battery.avionics_current_a;
+  double conductance = 0.0;
+  for (std::size_t i = 0; i < params_.motor_count; ++i) {
+    const physics::MotorParams& motor = params_.motors[i];
+    const double u = motors_off ? 0.0 : physics::quantize_command(commands[i]);
+    if (motor.model == physics::MotorModel::kDc) {
+      const double kt = 1.0 / motor.kv_radps_per_v;
+      conductance += u * u / motor.resistance_ohm;
+      fixed_current -= u * kt * state_.motor_speed_radps[i] / motor.resistance_ohm;
+    } else {
+      fixed_current += state_.motor_bus_current_a[i];  // no electrical model: last step's draw
+    }
+  }
+  const double bus_voltage =
+      physics::solve_bus_voltage(params_.battery, state_.battery, fixed_current, conductance);
   double bus_current = 0.0;
   for (std::size_t i = 0; i < params_.motor_count; ++i) {
     const physics::MotorMount& mount = params_.mounts[i];
@@ -52,7 +70,7 @@ StepResult Vehicle::step(const MotorCommandArray& commands, const env::Air& air,
         air_velocity_frd + body.angular_rate_frd.cross(mount.position_frd);
     const Eigen::Vector3d hub_ned = body.position_ned + body.q_ned_from_frd * mount.position_frd;
     const physics::MotorInput input{.command = motors_off ? 0.0 : commands[i],
-                                    .bus_voltage_v = state_.battery.bus_voltage_v,
+                                    .bus_voltage_v = bus_voltage,
                                     .air_density_kg_m3 = air.density_kg_m3,
                                     .axial_inflow_mps = hub_velocity.dot(mount.axis_frd),
                                     .height_above_ground_m = std::max(-hub_ned.z(), 0.0)};
@@ -60,6 +78,7 @@ StepResult Vehicle::step(const MotorCommandArray& commands, const env::Air& air,
                                            state_.motor_speed_radps[i], input, dt_s);
     state_.motor_speed_radps[i] = result.motors[i].speed_radps;
     bus_current += result.motors[i].bus_current_a;
+    state_.motor_bus_current_a[i] = result.motors[i].bus_current_a;
     state_.motor_consumed_ah[i] += result.motors[i].bus_current_a * dt_s / 3600.0;
   }
   state_.battery = physics::step_battery(params_.battery, state_.battery, bus_current, dt_s);

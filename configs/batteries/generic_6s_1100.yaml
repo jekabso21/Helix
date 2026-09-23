@@ -2,8 +2,8 @@
 schema_version: 1
 cells: 6
 capacity_mah: 1100
-cell_resistance_mohm: 8
+cell_resistance_mohm: 6
 connector_resistance_mohm: 2
 temperature_c: 25
 avionics_current_a: 0.8
-esc_cutoff_v: 15.0
+esc_cutoff_v: 8.0   # flight controller BEC dropout; a brownout with 1 V hysteresis, not a latch

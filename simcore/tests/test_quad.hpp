@@ -35,17 +35,17 @@ inline physics::MotorParams quad_motor() {
                               .pole_pairs = 7};
 }
 
-// Generic 2207 1900 kV numbers; no-load speed at 24 V is 4770 rad/s
+// The placeholder 2207 1900 kV: DC-equivalent 0.18 ohm, no-load speed at 24 V is 4770 rad/s
 inline physics::MotorParams dc_motor() {
   return physics::MotorParams{.model = physics::MotorModel::kDc,
                               .max_speed_radps = 0.0,
                               .time_constant_s = 0.0,
                               .reference_voltage_v = kBusVoltage,
                               .kv_radps_per_v = 1900.0 * 2.0 * 3.14159265358979 / 60.0,
-                              .resistance_ohm = 0.06,
+                              .resistance_ohm = 0.18,
                               .no_load_current_a = 1.5,
                               .brake_current_a = 10.0,
-                              .rotor_inertia_kg_m2 = 6.0e-6,
+                              .rotor_inertia_kg_m2 = 3.0e-6,
                               .pole_pairs = 7};
 }
 

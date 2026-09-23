@@ -5,9 +5,9 @@ battery:
   schema_version: 1
   cells: 6
   capacity_mah: 850
-  cell_resistance_mohm: 18
+  cell_resistance_mohm: 12
   connector_resistance_mohm: 3
   temperature_c: 10
   avionics_current_a: 0.8
-  esc_cutoff_v: 15.0
+  esc_cutoff_v: 8.0
   initial_soc: 0.6

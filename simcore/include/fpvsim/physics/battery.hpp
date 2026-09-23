@@ -26,14 +26,21 @@ struct BatteryState {
   double current_a;      // last step's pack current
   double bus_voltage_v;  // as seen by the ESCs
   double consumed_ah;
-  bool cutoff;  // bus voltage fell below esc_cutoff_v
+  bool cutoff;  // brownout: below esc_cutoff_v, clears again above cutoff + kCutoffHysteresisV
 };
+
+inline constexpr double kCutoffHysteresisV = 1.0;
 
 double open_circuit_voltage(const BatteryParams& params, double soc);  // per cell
 
+// Bus voltage when the loads draw fixed_current_a plus conductance_s times the bus voltage; solved
+// together so the sag never lags the current it causes (that lag oscillates at full throttle)
+double solve_bus_voltage(const BatteryParams& params, const BatteryState& state,
+                         double fixed_current_a, double conductance_s);
+
 BatteryState initial_battery(const BatteryParams& params);
 
-// Pack current is the motor bus currents plus avionics; the voltage uses the previous current
+// Pack current is the motor bus currents plus avionics; the voltage follows that current
 BatteryState step_battery(const BatteryParams& params, const BatteryState& state,
                           double motor_current_a, double dt_s);
 

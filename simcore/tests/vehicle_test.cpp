@@ -140,3 +140,40 @@ TEST(VehicleTest, EqualThrustWithAForwardCgPitchesNoseUpByTheMomentBalance) {
   EXPECT_NEAR(result.rates.angular_acceleration_frd.y(), expected_pitch_accel,
               1e-6 * std::abs(expected_pitch_accel));
 }
+
+// Full throttle from hover on the DC motor: the pack sags but voltage and current stay steady
+TEST(VehicleTest, PunchOutSagsWithoutOscillatingOrBrowningOut) {
+  sim::VehicleParams params = quad_params();
+  params.motors.fill(quad::dc_motor());
+  params.battery.cell_resistance_ohm = 0.012;  // a tired pack, the worst case
+  params.battery.esc_cutoff_v = 8.0;
+  sim::Vehicle vehicle(params, sim::spawn_state(params, 0.0, 0.0, 10.0, 0.0));
+  sim::MotorCommandArray full{};
+  full.fill(1.0);
+  double previous_voltage = vehicle.state().battery.bus_voltage_v;
+  double min_voltage = previous_voltage;
+  int reversals = 0;
+  double last_delta = 0.0;
+  for (int i = 0; i < 1500; ++i) {
+    vehicle.step(full, kAir, i * 0.001, 0.001);
+    const double v = vehicle.state().battery.bus_voltage_v;
+    const double delta = v - previous_voltage;
+    if (i > 5 && delta * last_delta < 0.0 && std::abs(delta) > 0.01) {
+      ++reversals;
+    }
+    last_delta = delta;
+    previous_voltage = v;
+    min_voltage = std::min(min_voltage, v);
+    EXPECT_FALSE(vehicle.state().battery.cutoff) << "brownout at step " << i;
+  }
+  EXPECT_LT(min_voltage, 25.0);  // it does sag
+  EXPECT_GT(min_voltage, 10.0);  // but stays usable
+  EXPECT_LE(reversals, 2);       // no millisecond oscillation
+  const auto& b = vehicle.state().battery;
+  const double r =
+      6.0 * params.battery.cell_resistance_ohm + params.battery.connector_resistance_ohm;
+  EXPECT_NEAR(b.bus_voltage_v,
+              6.0 * fpvsim::physics::open_circuit_voltage(params.battery, b.soc) - r * b.current_a,
+              1e-6);
+  EXPECT_GT(b.current_a, 30.0);
+}
