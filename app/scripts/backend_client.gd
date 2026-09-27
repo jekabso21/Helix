@@ -5,6 +5,7 @@ signal connected()
 signal disconnected()
 signal status(data: Dictionary)
 signal fc_status(data: Dictionary)
+signal osd(data: Dictionary)
 signal response(method: String, ok: bool, result: Dictionary)
 signal unreachable(seconds: float)
 
@@ -64,6 +65,7 @@ func _process(_delta: float) -> void:
 			connected.emit()
 			request("subscribe", {"topic": "status"})
 			request("subscribe", {"topic": "fc"})
+			request("subscribe", {"topic": "osd"})
 		_read_lines()
 		return
 	if is_connected_to_backend:
@@ -108,6 +110,8 @@ func _handle_line(line: String) -> void:
 		elif doc["event"] == "fc":
 			last_fc = data
 			fc_status.emit(data)
+		elif doc["event"] == "osd":
+			osd.emit(data)
 		return
 	var id: int = int(doc.get("id", -1))
 	if not _pending.has(id):

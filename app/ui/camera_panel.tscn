@@ -1,6 +1,7 @@
-[gd_scene load_steps=2 format=3]
+[gd_scene load_steps=3 format=3]
 
 [ext_resource type="Script" path="res://ui/camera_panel.gd" id="1"]
+[ext_resource type="Script" path="res://ui/osd_overlay.gd" id="2"]
 
 [node name="CameraPanel" type="VBoxContainer"]
 size_flags_horizontal = 3
@@ -20,6 +21,13 @@ render_target_update_mode = 4
 
 [node name="Camera3D" type="Camera3D" parent="SubViewport"]
 fov = 110.0
+
+[node name="OsdOverlay" type="Control" parent="SubViewport"]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+mouse_filter = 2
+script = ExtResource("2")
 
 [node name="View" type="TextureRect" parent="."]
 layout_mode = 2

@@ -101,7 +101,7 @@ def start_processes(resolved: ResolvedSession, run_dir: Path, simcore: Path) -> 
     bf_dir = run_dir / "betaflight"
     try:
         sitl = configure_and_start(resolved.betaflight_binary, bf_dir, bf_dir / "cli.txt")
-    except SitlPortBusyError as error:
+    except (SitlPortBusyError, RuntimeError, TimeoutError) as error:
         raise LaunchError(str(error)) from error
     session_json = run_dir / "resolved/session.json"
     with (run_dir / "logs/simcore.log").open("wb") as simcore_log:

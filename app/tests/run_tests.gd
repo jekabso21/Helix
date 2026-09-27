@@ -11,6 +11,7 @@ func _initialize() -> void:
 	_test_drone_glb()
 	_test_plot_series()
 	_test_plots_panel()
+	_test_osd_overlay()
 	print("%d checks, %d failures" % [checks, failures])
 	quit(1 if failures > 0 else 0)
 
@@ -114,4 +115,17 @@ func _test_plots_panel() -> void:
 	sample["sim"]["paused"] = true
 	panel._on_telemetry(sample)
 	check(panel._motors[0].size() == 2, "paused telemetry is not appended")
+	panel.free()
+
+
+func _test_osd_overlay() -> void:
+	var overlay: Variant = load("res://ui/osd_overlay.gd")
+	check(overlay.glyph(0x41) == "A" and overlay.glyph(0x20) == "", "ascii passes through, blank is empty")
+	check(overlay.glyph(0x90) == "▮" and overlay.glyph(0x68) == "↑", "battery and arrow symbols mapped")
+	check(overlay.glyph(0xC3) == "▪", "unknown font codes get a placeholder")
+	check(overlay.is_horizon_bar(0x80) and overlay.is_horizon_bar(0x88), "horizon ladder codes are drawn as lines")
+	check(not overlay.is_horizon_bar(0x7F) and not overlay.is_horizon_bar(0x89), "the ladder range stops at nine codes")
+	var panel: Variant = overlay.new()
+	panel.set_canvas({"cols": 30, "rows": 16, "codes": [[0x41, 0x20]], "attrs": [[0, 0]]})
+	check(panel.cols == 30 and panel.rows == 16 and panel.draws == 1, "canvas stored")
 	panel.free()

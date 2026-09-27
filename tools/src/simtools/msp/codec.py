@@ -18,6 +18,8 @@ class MspCommand(IntEnum):
     ALTITUDE = 109
     ANALOG = 110
     MOTOR_TELEMETRY = 139
+    DISPLAYPORT = 182
+    SET_OSD_CANVAS = 188
     STATUS_EX = 150
     SET_RAW_RC = 200
 

@@ -70,12 +70,20 @@ def apply_cli_config(cli_script: Path) -> str:
     return output.decode(errors="replace")
 
 
+SAVE_TIMEOUT_S = 20.0
+
+
 def configure_and_start(binary: Path, workdir: Path, cli_script: Path) -> subprocess.Popen[bytes]:
     """Fresh eeprom: apply the CLI script (SITL exits on save), start again, wait for MSP."""
     sitl = start_sitl(binary, workdir, "sitl_configure.log")
     try:
         output = apply_cli_config(cli_script)
-        sitl.wait(timeout=5.0)
+        # writing the eeprom and rebooting takes about 7 s with a full OSD element list
+        sitl.wait(timeout=SAVE_TIMEOUT_S)
+    except subprocess.TimeoutExpired as error:
+        raise RuntimeError(
+            f"Betaflight did not restart within {SAVE_TIMEOUT_S} s of save"
+        ) from error
     finally:
         if sitl.poll() is None:
             sitl.kill()

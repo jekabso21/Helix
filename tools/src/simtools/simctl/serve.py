@@ -23,6 +23,8 @@ from simtools.config.schemas import InputMappingConfig
 from simtools.modelc import compile_drone, export_glb, to_json
 from simtools.modelc.overrides import OverrideError, apply_overrides, summary
 from simtools.msp import MspCommand, MspError, parse_status_ex
+from simtools.msp.codec import MspDecoder, encode_request
+from simtools.osd import OsdGrid, canvas_payload
 from simtools.simctl.launcher import LaunchError, ProcessSet, find_simcore, start_processes
 from simtools.simctl.spawner import Spawner
 from simtools.sitl import HOST, connect_uart
@@ -50,6 +52,8 @@ class Supervisor:
         self._subscribers: list[tuple[str, queue.Queue[Json]]] = []
         self._fc_thread: threading.Thread | None = None
         self._fc_stop = threading.Event()
+        self._osd_thread: threading.Thread | None = None
+        self._osd_grid: OsdGrid | None = None
         # session processes carry a parent-death signal; forked from a request handler thread
         # they died as soon as the client that asked for them hung up
         self._spawner = Spawner()
@@ -190,11 +194,13 @@ class Supervisor:
             self._processes = processes
             self._state = "running"
         self._start_fc_poller()
+        self._start_osd_reader(resolved.session["betaflight"]["osd"])
         self._publish("status", self.status())
         return {"run_dir": str(run_dir), "processes": self.status()["processes"]}
 
     def stop(self) -> Json:
         self._stop_fc_poller()
+        self._stop_osd_reader()
         with self._lock:
             processes = self._processes
             self._processes = None
@@ -286,6 +292,73 @@ class Supervisor:
             targets = [q for t, q in self._subscribers if t == topic]
         for events in targets:
             events.put({"event": topic, "data": data})
+
+    # Betaflight OSD over MSP DisplayPort on its own UART
+
+    def get_osd(self) -> Json:
+        with self._lock:
+            grid = self._osd_grid
+        if grid is None:
+            raise LaunchError("no session running")
+        data = grid.to_json()
+        data["draws"] = grid.draws
+        return data
+
+    def _start_osd_reader(self, osd: Json) -> None:
+        if not osd.get("enabled"):
+            return
+        with self._lock:
+            self._osd_grid = OsdGrid(cols=int(osd["cols"]), rows=int(osd["rows"]))
+        self._osd_thread = threading.Thread(
+            target=self._read_osd, args=(int(osd["uart_port"]),), daemon=True
+        )
+        self._osd_thread.start()
+
+    def _stop_osd_reader(self) -> None:
+        self._fc_stop.set()
+        if self._osd_thread is not None:
+            self._osd_thread.join(timeout=3.0)
+            self._osd_thread = None
+        with self._lock:
+            self._osd_grid = None
+
+    def _read_osd(self, port: int) -> None:
+        """Keeps the DisplayPort UART open and publishes the canvas on every draw."""
+        deadline = time.monotonic() + 10.0
+        sock: socket.socket | None = None
+        while sock is None and not self._fc_stop.is_set():
+            try:
+                sock = socket.create_connection((HOST, port), timeout=1.0)
+            except OSError:
+                if time.monotonic() > deadline:
+                    return
+                time.sleep(0.2)
+        if sock is None:
+            return
+        with self._lock:
+            grid = self._osd_grid
+        if grid is None:
+            sock.close()
+            return
+        decoder = MspDecoder()
+        with sock:
+            sock.settimeout(0.5)
+            # announce the canvas like an HD VTX; no reboot since HD and MSP are set in the CLI
+            sock.sendall(
+                encode_request(MspCommand.SET_OSD_CANVAS, canvas_payload(grid.cols, grid.rows))
+            )
+            while not self._fc_stop.is_set():
+                try:
+                    data = sock.recv(4096)
+                except TimeoutError:
+                    continue
+                except OSError:
+                    return
+                if not data:
+                    return
+                for frame in decoder.feed(data):
+                    if frame.command == MspCommand.DISPLAYPORT and grid.apply(frame.payload):
+                        self._publish("osd", grid.to_json())
 
     # flight controller status over MSP on UART2
 
@@ -437,11 +510,13 @@ class Handler(socketserver.StreamRequestHandler):
                 return self._ok(
                     request_id, supervisor.apply_drone(dict(params.get("overrides", {})))
                 ), None
+            if method == "get_osd":
+                return self._ok(request_id, supervisor.get_osd()), None
             if method == "subscribe":
                 topic = str(params.get("topic", ""))
-                if topic not in ("status", "fc"):
+                if topic not in ("status", "fc", "osd"):
                     return self._error(
-                        request_id, "invalid_params", "topic must be status or fc"
+                        request_id, "invalid_params", "topic must be status, fc or osd"
                     ), None
                 return self._ok(request_id, {"subscription_id": next_id}), supervisor.subscribe(
                     topic

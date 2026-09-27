@@ -3,6 +3,7 @@ import math
 import socket
 import threading
 import time
+from datetime import datetime
 from pathlib import Path
 
 import pytest
@@ -101,6 +102,17 @@ class ApiObserver(threading.Thread):
         udp.close()
 
 
+def simcore_wall_seconds(log: Path) -> float:
+    """Wall time between simcore's start and finish lines, so SITL setup is not counted."""
+    stamps = [
+        datetime.strptime(line[1:24], "%Y-%m-%d %H:%M:%S.%f")
+        for line in log.read_text().splitlines()
+        if line.startswith("[") and ("starting:" in line or "run finished:" in line)
+    ]
+    assert len(stamps) == 2, log.read_text()
+    return (stamps[1] - stamps[0]).total_seconds()
+
+
 def tilt_deg(qw: float, qx: float, qy: float, qz: float) -> float:
     # angle between body down and NED down: cos = R[2][2]
     cos_tilt = 1.0 - 2.0 * (qx * qx + qy * qy)
@@ -148,7 +160,10 @@ def test_altitude_hold_keeps_height_within_half_a_metre(tmp_path: Path) -> None:
     for motor, seen in zip(last["motors"], observer.motor_telemetry[:4], strict=False):
         assert abs(seen.rpm - motor["rpm"]) < 0.15 * motor["rpm"] + 200, (seen, motor)
     assert 20.0 < last["battery"]["voltage_v"] < 25.2 and 0.0 < last["battery"]["soc"] < 1.0
-    assert abs(elapsed - DURATION_S) < 8.0, f"realtime pacing off: {elapsed:.1f} s"
+    # pace simcore itself: `elapsed` also covers configuring and rebooting the SITL
+    flight_s = simcore_wall_seconds(run_dir / "logs/simcore.log")
+    assert abs(flight_s - DURATION_S) < 2.0, f"realtime pacing off: {flight_s:.1f} s"
+    assert elapsed >= flight_s
 
     with (run_dir / "data/truth.csv").open() as f:
         rows = [r for r in csv.DictReader(f) if float(r["t_s"]) >= WINDOW_START_S]

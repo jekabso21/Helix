@@ -19,6 +19,7 @@ from simtools.config.schemas import (
 )
 from simtools.modelc.compile import compile_drone, to_json
 from simtools.modelc.gltf import export_glb
+from simtools.osd import osd_pos
 
 RESOLVED_SCHEMA_VERSION = 1
 
@@ -135,6 +136,19 @@ def resolve_session(session_path: Path, base_dir: Path) -> ResolvedSession:
             "set current_meter = ESC",
             f"set motor_poles = {drone.motor.poles}",
         ]
+    osd = session.betaflight.osd
+    osd_uart_port = bf_ports.uart_base + bf_ports.osd_uart - 1
+    if osd.enabled:
+        # 131073 = MSP | VTX_MSP: config.c picks the DisplayPort serial only when both are set,
+        # and only FUNCTION_MSP ports are opened for the push (msp_serial.c)
+        cli_lines += [
+            f"serial {bf_ports.osd_uart - 1} 131073 115200 57600 0 115200",
+            "set osd_displayport_device = MSP",
+            f"set vcd_video_system = {osd.video_system.upper()}",
+        ]
+        cli_lines += [
+            f"set osd_{name}_pos = {osd_pos(x, y)}" for name, (x, y) in osd.elements.items()
+        ]
 
     resolved_input: dict[str, Any] = {
         "source": session.input.source,
@@ -171,6 +185,12 @@ def resolve_session(session_path: Path, base_dir: Path) -> ResolvedSession:
                 "enabled": session.betaflight.virtual_esc,
                 "request_port": bf_ports.esc_request,
                 "uart_port": esc_uart_port,
+            },
+            "osd": {
+                "enabled": osd.enabled,
+                "uart_port": osd_uart_port,
+                "cols": osd.canvas_cols,
+                "rows": osd.canvas_rows,
             },
         },
         "origin": {

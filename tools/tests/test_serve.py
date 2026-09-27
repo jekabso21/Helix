@@ -14,8 +14,9 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
 class LineClient:
-    def __init__(self, port: int) -> None:
-        self.sock = socket.create_connection(("127.0.0.1", port), timeout=5.0)
+    def __init__(self, port: int, timeout_s: float = 5.0) -> None:
+        # starting a session configures and reboots the SITL, which takes over ten seconds
+        self.sock = socket.create_connection(("127.0.0.1", port), timeout=timeout_s)
         self.file = self.sock.makefile("rb")
         self.next_id = 1
 
@@ -175,7 +176,7 @@ def test_session_outlives_the_client_that_started_it() -> None:
         deadline = time.monotonic() + 10.0
         while True:
             try:
-                starter = LineClient(port)
+                starter = LineClient(port, timeout_s=90.0)
                 break
             except OSError:
                 assert time.monotonic() < deadline, "backend did not come up"
@@ -185,6 +186,7 @@ def test_session_outlives_the_client_that_started_it() -> None:
         time.sleep(6.0)
         watcher = LineClient(port)
         processes = watcher.request("status")["result"]["processes"]
+        osd = watcher.request("get_osd")["result"]  # Betaflight pushes its OSD over DisplayPort
         watcher.request("stop")
         watcher.request("shutdown")
         watcher.close()
@@ -192,6 +194,9 @@ def test_session_outlives_the_client_that_started_it() -> None:
             ("betaflight", "running"),
             ("simcore", "running"),
         ], processes
+        assert osd["draws"] > 0 and any(any(c != 0x20 for c in row) for row in osd["codes"]), osd[
+            "draws"
+        ]
     finally:
         try:
             backend.wait(timeout=10.0)

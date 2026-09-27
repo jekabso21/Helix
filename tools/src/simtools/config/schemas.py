@@ -18,7 +18,39 @@ class Ports(Strict):
     rc: int = 9004
     esc_request: int = 9005
     esc_uart: int = 4
+    osd_uart: int = 5
     uart_base: int = 5761
+
+
+DEFAULT_OSD_ELEMENTS: dict[str, tuple[int, int]] = {
+    "vbat": (1, 1),
+    "current": (1, 2),
+    "mah_drawn": (1, 3),
+    "flymode": (22, 1),
+    "tim_2": (44, 1),
+    "throttle": (44, 2),
+    "esc_rpm": (44, 3),
+    "altitude": (1, 17),
+    "warnings": (18, 16),
+    "crosshairs": (24, 9),
+    "ah": (25, 5),
+    "ah_sbar": (25, 9),
+}
+
+
+class OsdConfig(Strict):
+    enabled: bool = True
+    video_system: Literal["hd", "pal", "ntsc"] = "hd"
+    canvas_cols: int = Field(default=53, ge=1, le=63)
+    canvas_rows: int = Field(default=20, ge=1, le=31)
+    elements: dict[str, tuple[int, int]] = Field(default_factory=lambda: dict(DEFAULT_OSD_ELEMENTS))
+
+    @model_validator(mode="after")
+    def elements_fit_the_canvas(self) -> "OsdConfig":
+        for name, (x, y) in self.elements.items():
+            if not (0 <= x < self.canvas_cols and 0 <= y < self.canvas_rows):
+                raise ValueError(f"osd element '{name}' at {x}, {y} is outside the canvas")
+        return self
 
 
 class BetaflightConfig(Strict):
@@ -29,6 +61,7 @@ class BetaflightConfig(Strict):
     host: str = "127.0.0.1"
     ports: Ports = Field(default_factory=Ports)
     virtual_esc: bool = True
+    osd: OsdConfig = Field(default_factory=OsdConfig)
 
 
 class OriginConfig(Strict):

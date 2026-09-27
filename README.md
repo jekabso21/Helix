@@ -38,6 +38,7 @@ CMake presets: `dev` (GCC, Debug, ASan and UBSan), `clang` (Clang, warnings as e
 
 ```bash
 ./scripts/run_app.sh                                        # GUI app; starts simctl serve itself
+./scripts/run_app_video.sh                                  # GUI app plus a GStreamer window with the camera output
 ./scripts/run_app.sh -- --attach                            # GUI attached to a running simctl run
 ./scripts/run_app.sh -- --screenshot /tmp/app.png           # save the window content and quit
 uv run --project tools simctl validate configs/sessions/ci_hover.yaml
