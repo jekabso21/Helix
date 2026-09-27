@@ -195,10 +195,10 @@ def test_session_outlives_the_client_that_started_it() -> None:
         watcher.request("stop")
         watcher.request("shutdown")
         watcher.close()
-        assert [(p["name"], p["state"]) for p in processes] == [
-            ("betaflight", "running"),
-            ("simcore", "running"),
-        ], processes
+        running = [(p["name"], p["state"]) for p in processes]
+        assert running[:2] == [("betaflight", "running"), ("simcore", "running")], processes
+        # simvideo joins the session when it has been built and the session configures a camera
+        assert running[2:] in ([], [("simvideo", "running")]), processes
         assert osd["draws"] > 0 and any(any(c != 0x20 for c in row) for row in osd["codes"]), osd[
             "draws"
         ]

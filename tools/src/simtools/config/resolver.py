@@ -82,6 +82,7 @@ class ResolvedSession:
     drone: dict[str, Any]
     drone_config: DroneConfig
     cameras: dict[str, Any]
+    video_enabled: bool
     cli_lines: list[str]
     betaflight_binary: Path
     ports: dict[str, int]
@@ -242,6 +243,7 @@ def resolve_session(session_path: Path, base_dir: Path) -> ResolvedSession:
         drone=resolve_drone(drone),
         drone_config=drone,
         cameras=resolve_cameras(cameras, session.betaflight.host, session.video.status_port),
+        video_enabled=session.video.enabled and bool(cameras),
         cli_lines=cli_lines,
         betaflight_binary=base_dir / session.betaflight.binary,
         ports={"uart_base": session.betaflight.ports.uart_base, **ports},

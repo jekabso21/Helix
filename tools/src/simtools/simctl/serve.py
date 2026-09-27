@@ -25,7 +25,13 @@ from simtools.modelc.overrides import OverrideError, apply_overrides, summary
 from simtools.msp import MspCommand, MspError, parse_status_ex
 from simtools.msp.codec import MspDecoder, encode_request
 from simtools.osd import OsdGrid, canvas_payload
-from simtools.simctl.launcher import LaunchError, ProcessSet, find_simcore, start_processes
+from simtools.simctl.launcher import (
+    LaunchError,
+    ProcessSet,
+    find_simcore,
+    find_simvideo,
+    start_processes,
+)
 from simtools.simctl.spawner import Spawner
 from simtools.sitl import HOST, connect_uart
 
@@ -183,7 +189,10 @@ class Supervisor:
                 self._model_revision = 0
                 self._model_overrides = {}
             self._publish("status", self.status())
-            processes = self._spawner.run(lambda: start_processes(resolved, run_dir, simcore))
+            video = find_simvideo(self.base_dir)
+            processes = self._spawner.run(
+                lambda: start_processes(resolved, run_dir, simcore, video)
+            )
         except (ConfigError, LaunchError, OSError) as error:
             with self._lock:
                 self._state = "idle"

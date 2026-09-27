@@ -16,6 +16,7 @@ from simtools.propfit import ThrustTableError, as_yaml, fit_prop, read_thrust_ta
 from simtools.simctl.launcher import (
     LaunchError,
     find_simcore,
+    find_simvideo,
     install_signal_handlers,
     run_headless,
 )
@@ -61,7 +62,7 @@ def run(
         run_dir = write_run_directory(resolved, root, base_dir, sys.argv)
         typer.echo(f"run directory: {run_dir}")
         install_signal_handlers()
-        result = run_headless(resolved, run_dir, find_simcore(base_dir))
+        result = run_headless(resolved, run_dir, find_simcore(base_dir), find_simvideo(base_dir))
     except (ConfigError, LaunchError) as error:
         typer.echo(str(error), err=True)
         raise typer.Exit(code=2) from error

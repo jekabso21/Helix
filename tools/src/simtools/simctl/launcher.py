@@ -30,6 +30,21 @@ def find_simcore(base_dir: Path) -> Path:
     return max(candidates, key=lambda c: c.stat().st_mtime)
 
 
+def find_simvideo(base_dir: Path) -> Path | None:
+    """The video pipeline is optional: a session runs without it when it has not been built."""
+    override = os.environ.get("FPVSIM_SIMVIDEO")
+    if override:
+        return Path(override)
+    candidates = [
+        c
+        for c in (
+            base_dir / "build" / preset / "simvideo" / "simvideo" for preset in SIMCORE_PRESETS
+        )
+        if c.exists()
+    ]
+    return max(candidates, key=lambda c: c.stat().st_mtime) if candidates else None
+
+
 def _terminate(process: subprocess.Popen[bytes], timeout_s: float = 5.0) -> None:
     if process.poll() is not None:
         return
@@ -58,14 +73,18 @@ class ProcessSet:
     run_dir: Path
     sitl: subprocess.Popen[bytes]
     core: subprocess.Popen[bytes]
+    video: subprocess.Popen[bytes] | None = None
     started_at: float = field(default_factory=time.monotonic)
 
     def poll(self) -> list[ProcessInfo]:
         infos: list[ProcessInfo] = []
-        for name, process, log in (
+        entries = [
             ("betaflight", self.sitl, self.run_dir / "logs/betaflight_run.log"),
             ("simcore", self.core, self.run_dir / "logs/simcore.log"),
-        ):
+        ]
+        if self.video is not None:
+            entries.append(("simvideo", self.video, self.run_dir / "logs/simvideo.log"))
+        for name, process, log in entries:
             code = process.poll()
             if code is None:
                 state = "running"
@@ -80,7 +99,9 @@ class ProcessSet:
         return self.core.poll() is None and self.sitl.poll() is None
 
     def stop(self) -> int:
-        """Stops simcore then SITL; returns simcore's exit code."""
+        """Stops simvideo, then simcore, then SITL; returns simcore's exit code."""
+        if self.video is not None:
+            _terminate(self.video)
         _terminate(self.core)
         _terminate(self.sitl)
         self._finish_logs()
@@ -94,7 +115,9 @@ class ProcessSet:
                 source.replace(self.run_dir / "logs" / name.replace("sitl_", "betaflight_"))
 
 
-def start_processes(resolved: ResolvedSession, run_dir: Path, simcore: Path) -> ProcessSet:
+def start_processes(
+    resolved: ResolvedSession, run_dir: Path, simcore: Path, simvideo: Path | None = None
+) -> ProcessSet:
     """Configure and start SITL, wait until it answers MSP, then start simcore."""
     if not resolved.betaflight_binary.exists():
         raise LaunchError(f"Betaflight SITL binary not found: {resolved.betaflight_binary}")
@@ -110,7 +133,23 @@ def start_processes(resolved: ResolvedSession, run_dir: Path, simcore: Path) -> 
             stdout=simcore_log,
             stderr=subprocess.STDOUT,
         )
-    return ProcessSet(run_dir=run_dir, sitl=sitl, core=core)
+    video: subprocess.Popen[bytes] | None = None
+    cameras_json = run_dir / "resolved/cameras.json"
+    if simvideo is not None and resolved.video_enabled and cameras_json.exists():
+        with (run_dir / "logs/simvideo.log").open("wb") as video_log:
+            video = subprocess.Popen(
+                [
+                    "setpriv",
+                    "--pdeathsig",
+                    "KILL",
+                    str(simvideo),
+                    "--cameras",
+                    str(cameras_json),
+                ],
+                stdout=video_log,
+                stderr=subprocess.STDOUT,
+            )
+    return ProcessSet(run_dir=run_dir, sitl=sitl, core=core, video=video)
 
 
 @dataclass
@@ -119,9 +158,11 @@ class RunResult:
     run_dir: Path
 
 
-def run_headless(resolved: ResolvedSession, run_dir: Path, simcore: Path) -> RunResult:
+def run_headless(
+    resolved: ResolvedSession, run_dir: Path, simcore: Path, simvideo: Path | None = None
+) -> RunResult:
     """Run to completion in the foreground; Ctrl+C stops everything."""
-    processes = start_processes(resolved, run_dir, simcore)
+    processes = start_processes(resolved, run_dir, simcore, simvideo)
     exit_code = 1
     try:
         while True:

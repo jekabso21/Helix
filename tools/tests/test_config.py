@@ -185,3 +185,19 @@ def test_the_run_directory_carries_cameras_json(tmp_path: Path) -> None:
     run_dir = write_run_directory(resolved, tmp_path, REPO_ROOT, ["pytest"])
     written = json.loads((run_dir / "resolved/cameras.json").read_text())
     assert written["cameras"][0]["name"] == "main_fpv"
+
+
+def test_video_is_disabled_when_a_session_has_no_camera(tmp_path: Path) -> None:
+    session = load_yaml(SESSION)
+    session.pop("cameras", None)
+    (tmp_path / "no_camera.yaml").write_text(yaml.safe_dump(session))
+    resolved = resolve_session(tmp_path / "no_camera.yaml", REPO_ROOT)
+    assert resolved.cameras["cameras"] == []
+    assert resolved.video_enabled is False  # nothing to publish, so simvideo is not started
+
+
+def test_video_can_be_switched_off_in_the_session(tmp_path: Path) -> None:
+    session = load_yaml(SESSION)
+    session["video"] = {"enabled": False}
+    (tmp_path / "off.yaml").write_text(yaml.safe_dump(session))
+    assert resolve_session(tmp_path / "off.yaml", REPO_ROOT).video_enabled is False
