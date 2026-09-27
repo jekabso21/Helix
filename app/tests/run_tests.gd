@@ -17,6 +17,7 @@ func _initialize() -> void:
 	_test_camera_panel_follows_the_config()
 	_test_camera_rotation_shift()
 	_test_output_status_lines()
+	await _test_camera_selector()
 	print("%d checks, %d failures" % [checks, failures])
 	quit(1 if failures > 0 else 0)
 
@@ -222,12 +223,13 @@ func _test_camera_panel_follows_the_config() -> void:
 	_write_json(dir + "/resolved/cameras.json", cameras)
 	_write_json(dir + "/resolved/drone.json", drone)
 
-	var panel: Variant = load("res://ui/camera_panel.gd").new()
-	panel._load_mount(ProjectSettings.globalize_path(dir), "probe_fpv")
-	check(panel.mount_position_frd.is_equal_approx(Vector3(0.055, 0.0, -0.015)), "mount position from the compiled model, got %s" % panel.mount_position_frd)
-	var look := Frames.godot_quat_from_frd(panel.mount_q_frd_from_camera) * Vector3(0, 0, -1)
+	var panel: Variant = load("res://ui/camera_panel.gd")
+	var drone_doc: Variant = JSON.parse_string(FileAccess.get_file_as_string(dir + "/resolved/drone.json"))
+	var mount: Dictionary = panel.mount_from_drone(drone_doc, "probe_fpv")
+	check(mount["position_frd"].is_equal_approx(Vector3(0.055, 0.0, -0.015)), "mount position from the compiled model, got %s" % mount["position_frd"])
+	var look := Frames.godot_quat_from_frd(mount["q_frd_from_camera"]) * Vector3(0, 0, -1)
 	check(look.y > 0.4, "a 35 deg nose-up camera part tilts the view up, got %s" % look)
-	panel.free()
+	check(panel.mount_from_drone(drone_doc, "absent").is_empty(), "a camera with no mount falls back")
 
 
 func _write_json(path: String, data: Dictionary) -> void:
@@ -265,3 +267,26 @@ func _test_output_status_lines() -> void:
 	check(panel.output_summary(broken) == "out 1  error  0.0 fps  could not link", panel.output_summary(broken))
 	check(panel.output_colour("error").r > panel.output_colour("running").r, "an error stands out")
 	check(panel.output_colour("disabled") != panel.output_colour("running"), "a disabled output differs")
+
+
+## Every configured camera gets its own feed; the selector picks which one the panel shows
+func _test_camera_selector() -> void:
+	var panel: Node = load("res://ui/camera_panel.tscn").instantiate()
+	root.add_child(panel)
+	await panel.ready
+	var configs := [
+		{"name": "main_fpv", "width": 1280, "height": 720, "fps": 60.0, "optics": {"hfov_rad": deg_to_rad(120.0)}},
+		{"name": "rear_fpv", "width": 640, "height": 360, "fps": 30.0, "osd": false, "optics": {"hfov_rad": deg_to_rad(90.0)}},
+	]
+	panel._build_feeds(configs)
+	check(panel._feeds.size() == 2, "two cameras give two feeds, got %d" % panel._feeds.size())
+	check(panel._selector.item_count == 2 and panel._selector.get_item_text(1) == "rear_fpv", "both cameras are listed")
+	check(panel.selected_feed().name == "main_fpv", "the first camera is shown first")
+	check(panel.selected_feed().viewport.size == Vector2i(1280, 720), "each feed renders at its own resolution")
+	panel._on_camera_selected(1)
+	check(panel.selected_feed().name == "rear_fpv", "the selector switches the shown camera")
+	check(panel.selected_feed().viewport.size == Vector2i(640, 360), "the second feed has its own size")
+	check(panel._feeds[1].osd == false, "a camera can turn the OSD off")
+	check(panel._feeds[1].viewport.get_child_count() == 1, "and then gets no OSD overlay node")
+	check(panel._feeds[0].viewport.get_child_count() == 2, "while the main camera keeps one")
+	panel.queue_free()
