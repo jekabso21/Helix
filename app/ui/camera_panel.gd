@@ -81,6 +81,13 @@ func _ready() -> void:
 	_update_command()
 
 
+## A pop-out copy of the panel renders the same world as the main window
+func use_world(world: World3D) -> void:
+	_world = world
+	for feed in _feeds:
+		feed.viewport.world_3d = world
+
+
 func _exit_tree() -> void:
 	if _raw != null:
 		_raw.stop()

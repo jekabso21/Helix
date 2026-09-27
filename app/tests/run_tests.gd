@@ -299,4 +299,8 @@ func _test_camera_selector() -> void:
 	check(first_toggle.button_pressed and not second_toggle.button_pressed, "the switches follow the reported state")
 	panel._on_video({"camera": "main_fpv", "outputs": []})
 	check(panel._outputs.get_child_count() == 2, "a report for another camera is ignored")
+	# the pop-out window renders the main window's world through the same panel
+	var world := World3D.new()
+	panel.use_world(world)
+	check(panel._feeds[0].viewport.world_3d == world and panel._feeds[1].viewport.world_3d == world, "every feed follows the world it is given")
 	panel.queue_free()
