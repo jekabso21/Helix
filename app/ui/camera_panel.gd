@@ -19,6 +19,7 @@ var distortion_k := Vector4.ZERO
 var rolling_shutter_s := 0.0
 var shutter_s := 0.0
 var noise_base := 0.0
+var burn_in_counter := false
 var half_hfov_rad := deg_to_rad(FALLBACK_HFOV_DEG) * 0.5
 
 var _publisher: Variant = null
@@ -110,6 +111,7 @@ func _load_camera(run_dir: String) -> void:
 	rolling_shutter_s = float(optics.get("rolling_shutter_readout_s", 0.0))
 	shutter_s = float((optics.get("exposure", {}) as Dictionary).get("shutter_s", 0.0))
 	noise_base = float((optics.get("noise", {}) as Dictionary).get("base", 0.0))
+	burn_in_counter = bool(camera.get("burn_in_counter", false))
 	_apply_camera(Vector2i(int(camera["width"]), int(camera["height"])), hfov_deg)
 	_load_mount(run_dir, camera_name)
 	_update_command()
@@ -146,6 +148,7 @@ func _open_publisher() -> void:
 		_publish_error = str(_publisher.last_error())
 		_publisher = null
 		return
+	_publisher.set_burn_in_counter(burn_in_counter)
 	_publish_error = ""
 	_frame_index = 0
 	_published = 0
@@ -204,6 +207,8 @@ func _process(_delta: float) -> void:
 			_show_published(pixels)
 	if _publisher != null:
 		status += "  ring: %d frames" % _published
+		if burn_in_counter:
+			status += " (counter burned in)"
 	elif _publish_error != "":
 		status += "  ring: " + _publish_error
 	_header.text = "%s %dx%d@%d  %s%s" % [

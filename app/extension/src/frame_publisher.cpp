@@ -14,6 +14,8 @@ void FramePublisher::_bind_methods() {
   ClassDB::bind_method(D_METHOD("is_open"), &FramePublisher::is_open);
   ClassDB::bind_method(D_METHOD("last_error"), &FramePublisher::last_error);
   ClassDB::bind_method(D_METHOD("frame_bytes"), &FramePublisher::frame_bytes);
+  ClassDB::bind_method(D_METHOD("set_burn_in_counter", "on"), &FramePublisher::set_burn_in_counter);
+  ClassDB::bind_method(D_METHOD("burn_in_counter"), &FramePublisher::burn_in_counter);
   ClassDB::bind_method(
       D_METHOD("publish", "pixels", "sim_time_ns", "frame_index", "position_ned",
                "q_ned_from_camera"),
@@ -56,8 +58,15 @@ int64_t FramePublisher::publish(const godot::PackedByteArray &pixels, int64_t si
       .camera_position_ned = {position_ned.x, position_ned.y, position_ned.z},
       .q_ned_from_camera = {q_ned_from_camera.w, q_ned_from_camera.x, q_ned_from_camera.y,
                             q_ned_from_camera.z}};
-  const std::span<const std::byte> bytes(reinterpret_cast<const std::byte *>(pixels.ptr()),
-                                         static_cast<std::size_t>(pixels.size()));
+  std::span<const std::byte> bytes(reinterpret_cast<const std::byte *>(pixels.ptr()),
+                                   static_cast<std::size_t>(pixels.size()));
+  if (burn_in_counter_) {
+    stamped_.assign(bytes.begin(), bytes.end());
+    proto::stamp_burn_in(stamped_, writer_->width(), writer_->height(), writer_->row_stride_bytes(),
+                         proto::bytes_per_pixel(proto::PixelFormat::kRgb8),
+                         static_cast<std::uint64_t>(frame_index));
+    bytes = stamped_;
+  }
   try {
     return static_cast<int64_t>(writer_->write(meta, bytes));
   } catch (const std::exception &error) {

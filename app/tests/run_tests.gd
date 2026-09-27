@@ -13,6 +13,7 @@ func _initialize() -> void:
 	_test_plots_panel()
 	_test_osd_overlay()
 	_test_frame_publisher()
+	_test_burn_in_counter()
 	_test_camera_panel_follows_the_config()
 	_test_camera_rotation_shift()
 	print("%d checks, %d failures" % [checks, failures])
@@ -166,6 +167,34 @@ func _test_frame_publisher() -> void:
 		check(f.get_32() == 8 and f.get_32() == 4, "size in the header")
 		f.seek(128 + 128)
 		check(f.get_8() == 0xAB, "the pixels reached the ring")
+	publisher.close()
+
+
+## The counter a latency run reads back out of a video output: marker cell, guard cell, then bits
+func _test_burn_in_counter() -> void:
+	if not ClassDB.class_exists("FramePublisher"):
+		return
+	const WIDTH := 20 * 16   # two cells wider than the counter, so its edge can be checked
+	const HEIGHT := 16
+	var publisher: Variant = ClassDB.instantiate("FramePublisher")
+	check(publisher.open("selftest_burnin", WIDTH, HEIGHT, 60.0), "burn-in ring opens")
+	publisher.set_burn_in_counter(true)
+	check(publisher.burn_in_counter(), "the publisher reports the counter is on")
+	var pixels := PackedByteArray()
+	pixels.resize(publisher.frame_bytes())
+	pixels.fill(0x40)
+	publisher.publish(pixels, 1000, 12345, Vector3.ZERO, Quaternion(0, 0, 0, 1))
+	var f := FileAccess.open("/dev/shm/fpvsim.selftest_burnin", FileAccess.READ)
+	check(f != null, "the burn-in ring exists in /dev/shm")
+	if f != null:
+		var bits := ""
+		for cell in range(18):
+			f.seek(128 + 128 + 8 * WIDTH * 3 + (cell * 16 + 8) * 3)
+			bits += "1" if f.get_8() >= 128 else "0"
+		# 12345 as sixteen bits, most significant first
+		check(bits == "10" + "0011000000111001", "counter pattern for frame 12345: " + bits)
+		f.seek(128 + 128 + 8 * WIDTH * 3 + (18 * 16 + 4) * 3)
+		check(f.get_8() == 0x40, "the counter leaves the rest of the row alone")
 	publisher.close()
 
 

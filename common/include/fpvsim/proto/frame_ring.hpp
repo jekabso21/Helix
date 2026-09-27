@@ -188,7 +188,12 @@ class FrameRingWriter {
   FrameRingWriter(const FrameRingWriter&) = delete;
   FrameRingWriter& operator=(const FrameRingWriter&) = delete;
 
-  [[nodiscard]] std::size_t frame_bytes() const { return stride_bytes(spec_) * spec_.height; }
+  [[nodiscard]] std::size_t frame_bytes() const { return row_stride_bytes() * spec_.height; }
+  [[nodiscard]] std::uint32_t width() const { return spec_.width; }
+  [[nodiscard]] std::uint32_t height() const { return spec_.height; }
+  [[nodiscard]] std::uint32_t row_stride_bytes() const {
+    return static_cast<std::uint32_t>(stride_bytes(spec_));
+  }
 
   // pixels must be exactly frame_bytes(); returns the published sequence number
   std::uint64_t write(const FrameMeta& meta, std::span<const std::byte> pixels) {
