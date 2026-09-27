@@ -6,6 +6,9 @@
 #include <thread>
 #include <vector>
 
+#include <gst/app/gstappsink.h>
+#include <gst/gst.h>
+
 #include <fpvsim/video/runner.hpp>
 
 namespace video = fpvsim::video;
@@ -114,4 +117,57 @@ TEST(RunnerTest, InputFpsAndLateFramesAreReported) {
   EXPECT_EQ(status.late_frames, 2U);
   EXPECT_GE(status.input_fps, 0.0);
   runner.stop();
+}
+
+// Acceptance: an output type is received by a standard GStreamer consumer. Encodes to H.264,
+// sends it over RTP/UDP and decodes it back, all through elements a normal player would use.
+TEST(RunnerTest, RtpH264OutputIsReceivedAndDecoded) {
+  video::init_gstreamer();
+  for (const char* element : {"openh264enc", "openh264dec", "rtph264pay", "rtph264depay"}) {
+    GstElementFactory* factory = gst_element_factory_find(element);
+    if (factory == nullptr) {
+      GTEST_SKIP() << element << " is not installed";
+    }
+    gst_object_unref(factory);
+  }
+  constexpr int kPort = 55611;  // unlikely to clash with a running session
+  const std::string receiver_launch =
+      "udpsrc port=" + std::to_string(kPort) +
+      " caps=application/x-rtp,media=video,encoding-name=H264,payload=96 ! rtpjitterbuffer "
+      "latency=50 ! rtph264depay ! h264parse ! openh264dec ! videoconvert ! "
+      "video/x-raw,format=RGB ! appsink name=out sync=false max-buffers=8 drop=false";
+  GError* error = nullptr;
+  GstElement* receiver = gst_parse_launch(receiver_launch.c_str(), &error);
+  ASSERT_NE(receiver, nullptr) << (error != nullptr ? error->message : "no pipeline");
+  GstElement* sink = gst_bin_get_by_name(GST_BIN(receiver), "out");
+  ASSERT_NE(sink, nullptr);
+  ASSERT_NE(gst_element_set_state(receiver, GST_STATE_PLAYING), GST_STATE_CHANGE_FAILURE);
+
+  {
+    video::CameraRunner runner(camera({{.pipeline = "openh264enc ! h264parse config-interval=1 ! "
+                                                    "rtph264pay config-interval=1 pt=96 ! udpsink "
+                                                    "host=127.0.0.1 port=" +
+                                                    std::to_string(kPort) + " sync=false",
+                                        .enabled = true}}));
+    runner.start();
+    ASSERT_EQ(runner.status().outputs.at(0).state, "running");
+    feed(runner, 30);
+    std::this_thread::sleep_for(std::chrono::milliseconds(500));
+    runner.stop();
+  }
+
+  int decoded = 0;
+  for (int i = 0; i < 40 && decoded < 5; ++i) {
+    GstSample* sample = gst_app_sink_try_pull_sample(GST_APP_SINK(sink), 100 * GST_MSECOND);
+    if (sample != nullptr) {
+      GstBuffer* buffer = gst_sample_get_buffer(sample);
+      EXPECT_EQ(gst_buffer_get_size(buffer), static_cast<gsize>(kWidth) * kHeight * 3);
+      ++decoded;
+      gst_sample_unref(sample);
+    }
+  }
+  gst_element_set_state(receiver, GST_STATE_NULL);
+  gst_object_unref(sink);
+  gst_object_unref(receiver);
+  EXPECT_GE(decoded, 5) << "the RTP stream never arrived at a standard receiver";
 }
