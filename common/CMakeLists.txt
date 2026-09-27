@@ -8,5 +8,6 @@ fpvsim_add_test(common_tests
     tests/frames_test.cpp
     tests/spsc_queue_test.cpp
     tests/render_state_test.cpp
+    tests/frame_ring_test.cpp
     LIBS fpvsim::common)
 target_compile_definitions(common_tests PRIVATE FPVSIM_GOLDEN_DIR="${PROJECT_SOURCE_DIR}/tests/golden")
