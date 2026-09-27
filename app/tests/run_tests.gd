@@ -12,6 +12,7 @@ func _initialize() -> void:
 	_test_plot_series()
 	_test_plots_panel()
 	_test_osd_overlay()
+	_test_frame_publisher()
 	print("%d checks, %d failures" % [checks, failures])
 	quit(1 if failures > 0 else 0)
 
@@ -129,3 +130,30 @@ func _test_osd_overlay() -> void:
 	panel.set_canvas({"cols": 30, "rows": 16, "codes": [[0x41, 0x20]], "attrs": [[0, 0]]})
 	check(panel.cols == 30 and panel.rows == 16 and panel.draws == 1, "canvas stored")
 	panel.free()
+
+
+## Needs ./scripts/build_extension.sh; skipped when the extension is not built
+func _test_frame_publisher() -> void:
+	if not ClassDB.class_exists("FramePublisher"):
+		print("skip: FramePublisher extension not built")
+		return
+	var publisher: Variant = ClassDB.instantiate("FramePublisher")
+	check(publisher.open("selftest_cam", 8, 4, 60.0), "ring opens: %s" % publisher.last_error())
+	check(publisher.frame_bytes() == 8 * 4 * 3, "rgb8 frame size %d" % publisher.frame_bytes())
+	var pixels := PackedByteArray()
+	pixels.resize(publisher.frame_bytes())
+	pixels.fill(0xAB)
+	var seq: int = publisher.publish(pixels, 123456789, 7, Vector3(1, 2, -3), Quaternion(0, 0, 0, 1))
+	check(seq == 1, "first frame publishes as sequence 1, got %d" % seq)
+	check(publisher.publish(PackedByteArray(), 1, 1, Vector3.ZERO, Quaternion()) == 0, "a wrong-sized frame is refused")
+	# the ring is a plain shared memory object, so the header can be read back as a file
+	var f := FileAccess.open("/dev/shm/fpvsim.selftest_cam", FileAccess.READ)
+	check(f != null, "the ring exists in /dev/shm")
+	if f != null:
+		check(f.get_32() == 0x46565046, "header magic is FPVF")
+		check(f.get_16() == 1, "layout version 1")
+		check(f.get_16() == 2, "pixel format is rgb8")
+		check(f.get_32() == 8 and f.get_32() == 4, "size in the header")
+		f.seek(128 + 128)
+		check(f.get_8() == 0xAB, "the pixels reached the ring")
+	publisher.close()

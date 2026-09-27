@@ -1,3 +1,6 @@
 [submodule "third_party/betaflight"]
 	path = third_party/betaflight
 	url = https://github.com/betaflight/betaflight.git
+[submodule "third_party/godot-cpp"]
+	path = third_party/godot-cpp
+	url = https://github.com/godotengine/godot-cpp
