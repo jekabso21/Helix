@@ -270,11 +270,12 @@ class FrameRingReader {
   }
 
   // Copies the newest frame if it is newer than after_seq. Returns its sequence, or 0 when there
-  // is nothing new or the writer overwrote the slot while it was being read.
+  // is nothing new or the writer overwrote the slot while it was being read. A sequence lower than
+  // after_seq means the publisher restarted and began counting again, which is not "nothing new".
   std::uint64_t read_latest(std::uint64_t after_seq, FrameMeta& meta, std::span<std::byte> pixels) {
     const FrameHeader& h = header();
     const std::uint64_t seq = h.latest_seq.load(std::memory_order_acquire);
-    if (seq == 0 || seq <= after_seq || pixels.size() != frame_bytes()) {
+    if (seq == 0 || seq == after_seq || pixels.size() != frame_bytes()) {
       return 0;
     }
     const std::byte* slot = slot_at((seq - 1) % h.slot_count);

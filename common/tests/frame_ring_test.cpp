@@ -159,3 +159,31 @@ TEST(FrameRingTest, ConcurrentWriterNeverYieldsATornFrame) {
   producer.join();
   EXPECT_GE(accepted, 200U) << "the reader never caught a complete frame";
 }
+
+// A publisher that restarts begins at sequence 1 again. A reader that was further along must not
+// mistake that for "nothing new" and stall until the count catches up.
+TEST(FrameRingTest, ReaderFollowsAPublisherThatRestarted) {
+  const std::string name = unique_name("restart");
+  proto::FrameMeta meta{};
+  std::uint64_t last = 0;
+  {
+    proto::FrameRingWriter writer(name, tiny_spec());
+    proto::FrameRingReader reader(name);
+    std::vector<std::byte> pixels(reader.frame_bytes());
+    for (std::uint64_t i = 1; i <= 5; ++i) {
+      writer.write(meta_for(i), pattern(writer.frame_bytes(), std::byte{0x01}));
+      last = reader.read_latest(last, meta, pixels);
+    }
+    EXPECT_EQ(last, 5U);
+  }
+  // the writer is gone; a new one starts the ring over
+  proto::FrameRingWriter restarted(name, tiny_spec());
+  proto::FrameRingReader reader(name);
+  std::vector<std::byte> pixels(reader.frame_bytes());
+  EXPECT_EQ(reader.read_latest(last, meta, pixels), 0U);  // nothing published yet
+  restarted.write(meta_for(42), pattern(restarted.frame_bytes(), std::byte{0x02}));
+  const std::uint64_t seq = reader.read_latest(last, meta, pixels);
+  EXPECT_EQ(seq, 1U) << "the reader ignored a restarted publisher";
+  EXPECT_EQ(meta.frame_index, 42U);
+  EXPECT_EQ(pixels.front(), std::byte{0x02});
+}
