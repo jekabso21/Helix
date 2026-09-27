@@ -266,6 +266,7 @@ def resolve_cameras(cameras: list[CameraConfig], host: str, status_port: int) ->
                 "pixel_format": "rgb8",
                 "sensor_latency_s": camera.sensor_latency_s,
                 "burn_in_counter": camera.burn_in_counter,
+                "osd": camera.osd,
                 "outputs": [{"pipeline": pipeline, "enabled": True} for pipeline in camera.outputs],
                 "optics": {
                     "projection": camera.projection,

@@ -198,6 +198,7 @@ class CameraConfig(Strict):
     sensor_latency_s: float = Field(default=0.0, ge=0.0)
     noise: CameraNoiseConfig = Field(default_factory=CameraNoiseConfig)
     burn_in_counter: bool = False  # draws the frame counter into the image for latency runs
+    osd: bool = True  # draw the flight controller OSD into this camera's image
     outputs: list[str] = Field(default_factory=list[str])
 
     @model_validator(mode="after")

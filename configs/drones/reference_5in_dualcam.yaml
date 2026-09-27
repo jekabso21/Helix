@@ -1,0 +1,8 @@
+# The reference drone with a second, rear-facing camera
+extends: reference_5in.yaml
+name: reference_5in_dualcam
+parts:
+  rear_camera: { shape: box, size_mm: [16, 16, 16], mass_g: 6, pos_mm: [-55, 0, -22], rot_deg: [0, 15, 180], color: "#101010" }
+cameras:
+  - { name: main_fpv, part: camera, offset_mm: [10, 0, 0] }
+  - { name: rear_fpv, part: rear_camera, offset_mm: [-8, 0, 0] }

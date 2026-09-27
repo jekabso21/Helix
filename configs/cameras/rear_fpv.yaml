@@ -1,0 +1,9 @@
+# Second camera on the reference drone, smaller and without the flight controller OSD
+schema_version: 1
+name: rear_fpv
+resolution: [640, 360]
+fps: 30
+intrinsics: { hfov_deg: 90 }
+osd: false
+outputs:
+  - "video/x-raw,format=I420 ! openh264enc ! h264parse ! rtph264pay config-interval=1 ! udpsink host=127.0.0.1 port=5602 sync=false"
