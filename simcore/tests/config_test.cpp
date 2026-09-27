@@ -11,7 +11,7 @@ namespace {
 
 const char* kSession = R"({
   "schema_version": 1, "seed": 42, "physics_rate_hz": 2000, "duration_s": 30.0,
-  "betaflight": {"host": "127.0.0.1", "ports": {"pwm": 9002, "fdm": 9003, "rc": 9004},
+  "betaflight": {"host": "127.0.0.1", "ports": {"pwm": 9002, "fdm": 9003, "rc": 9004, "rpm": 9006},
                  "esc": {"enabled": true, "request_port": 9005, "uart_port": 5764}},
   "origin": {"lat_rad": 0.977, "lon_rad": 0.419, "altitude_m": 10.0},
   "atmosphere": {"ground_temperature_k": 288.15, "ground_pressure_pa": 101325.0},
@@ -53,7 +53,7 @@ const char* kDrone = R"({
                       "accel_noise_density_mps2_rthz": 0, "accel_bias_walk_mps3_rthz": 0, "accel_range_mps2": 0,
                       "vibration_imbalance_mps2_per_radps2": 0, "vibration_harmonic2": 0, "vibration_blade_pass": 0,
                       "vibration_gyro_gain_radps_per_mps2": 0},
-              "baro": {"noise_pa": 0, "bias_pa": 0}},
+              "baro": {"noise_pa": 0, "bias_pa": 0, "drift_pa": 0}},
   "imu": {"position_frd_m": [0, 0, 0]},
   "aero": {"cda_frd_m2": [0.01, 0.01, 0.02], "cop_frd_m": [0, 0, 0], "k_omega": [5e-4, 5e-4, 5e-4]},
   "contact": {"points_frd_m": [[0.08, 0.08, 0.02], [-0.08, -0.08, 0.02]],

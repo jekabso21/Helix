@@ -298,6 +298,12 @@ RunSummary run_realtime(const config::SessionConfig& session, const VehicleParam
                                 .pressure_pa = result.baro.pressure_pa};
         have_fdm = true;
         link.send_fdm(last_fdm);
+        // stands in for bidirectional DShot telemetry, which feeds Betaflight's RPM filter
+        std::array<double, bf::kMotorCount> motor_hz{};
+        for (std::size_t i = 0; i < vehicle.params().motor_count && i < bf::kMotorCount; ++i) {
+          motor_hz[i] = vehicle.state().motor_speed_radps[i] / (2.0 * std::numbers::pi);
+        }
+        link.send_rpm(to_seconds(t), motor_hz);
       }
       t += step;
       ++step_index;

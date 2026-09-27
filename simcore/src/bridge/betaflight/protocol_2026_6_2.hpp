@@ -16,6 +16,7 @@ inline constexpr std::uint16_t kPortPwmRaw = 9001;
 inline constexpr std::uint16_t kPortPwm = 9002;
 inline constexpr std::uint16_t kPortFdm = 9003;
 inline constexpr std::uint16_t kPortRc = 9004;
+inline constexpr std::uint16_t kPortRpm = 9006;
 
 struct FdmPacket {
   double timestamp;
@@ -30,6 +31,12 @@ struct FdmPacket {
 struct RcPacket {
   double timestamp;
   std::array<std::uint16_t, kMaxRcChannels> channels;
+};
+
+// Added by patches/betaflight/0003-sitl-rpm-filter.patch; stands in for bidirectional DShot
+struct RpmPacket {
+  double timestamp;
+  std::array<float, kMotorSpeedCount> motor_frequency_hz;
 };
 
 struct ServoPacket {
@@ -57,6 +64,10 @@ static_assert(offsetof(FdmPacket, pressure) == 136);
 
 static_assert(sizeof(RcPacket) == 40);
 static_assert(offsetof(RcPacket, channels) == 8);
+
+static_assert(std::is_trivially_copyable_v<RpmPacket> && std::is_standard_layout_v<RpmPacket>);
+static_assert(sizeof(RpmPacket) == 24);
+static_assert(offsetof(RpmPacket, motor_frequency_hz) == 8);
 
 static_assert(sizeof(ServoPacket) == 16);
 

@@ -136,6 +136,10 @@ def resolve_session(session_path: Path, base_dir: Path) -> ResolvedSession:
             "set current_meter = ESC",
             f"set motor_poles = {drone.motor.poles}",
         ]
+    rpm_filter = session.betaflight.rpm_filter
+    # simcore feeds rotor speeds over UDP in place of bidirectional DShot telemetry
+    harmonics = rpm_filter.harmonics if rpm_filter.enabled else 0
+    cli_lines.append(f"set rpm_filter_harmonics = {harmonics}")
     osd = session.betaflight.osd
     osd_uart_port = bf_ports.uart_base + bf_ports.osd_uart - 1
     if osd.enabled:
@@ -172,6 +176,7 @@ def resolve_session(session_path: Path, base_dir: Path) -> ResolvedSession:
         "pwm": session.betaflight.ports.pwm,
         "fdm": session.betaflight.ports.fdm,
         "rc": session.betaflight.ports.rc,
+        "rpm": session.betaflight.ports.rpm,
     }
     resolved: dict[str, Any] = {
         "schema_version": RESOLVED_SCHEMA_VERSION,

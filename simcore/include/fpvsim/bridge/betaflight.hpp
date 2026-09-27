@@ -41,6 +41,9 @@ struct MotorCommands {
 
 proto::FdmPacket make_fdm_packet(const FdmInput& input);
 proto::RcPacket make_rc_packet(double sim_time_s, const RcChannels& channels);
+// Rotor speeds in mechanical Hz, what bidirectional DShot telemetry would report
+proto::RpmPacket make_rpm_packet(double sim_time_s,
+                                 const std::array<double, kMotorCount>& frequency_hz);
 MotorCommands decode_servo_packet(const proto::ServoPacket& packet);
 
 template <typename Packet>
@@ -53,6 +56,7 @@ struct Endpoints {
   std::uint16_t pwm_port;
   std::uint16_t fdm_port;
   std::uint16_t rc_port;
+  std::uint16_t rpm_port;
 };
 
 struct LinkCounters {
@@ -67,6 +71,7 @@ class BetaflightLink {
 
   void send_fdm(const FdmInput& input) noexcept;
   void send_rc(double sim_time_s, const RcChannels& channels) noexcept;
+  void send_rpm(double sim_time_s, const std::array<double, kMotorCount>& frequency_hz) noexcept;
   // Drains all pending motor packets and keeps the newest; true if any arrived
   bool poll_motors(MotorCommands& latest) noexcept;
   [[nodiscard]] const LinkCounters& counters() const { return counters_; }
@@ -76,6 +81,7 @@ class BetaflightLink {
   net::UdpSocket out_socket_;
   sockaddr_in fdm_address_;
   sockaddr_in rc_address_;
+  sockaddr_in rpm_address_;
   LinkCounters counters_;
 };
 

@@ -15,6 +15,7 @@ Vehicle::Vehicle(VehicleParams params, const physics::RigidBodyState& spawn)
              .motor_speed_radps = {},
              .motor_consumed_ah = {},
              .motor_bus_current_a = {},
+             .motor_desync = {},
              .battery = physics::initial_battery(params_.battery),
              .crashed = false},
       imu_noise_(params_.imu_noise) {}
@@ -24,8 +25,15 @@ void Vehicle::reset(const physics::RigidBodyState& spawn) {
                         .motor_speed_radps = {},
                         .motor_consumed_ah = {},
                         .motor_bus_current_a = {},
+                        .motor_desync = {},
                         .battery = physics::initial_battery(params_.battery),
                         .crashed = false};
+}
+
+void Vehicle::set_motor_desync(std::size_t index, bool on) {
+  if (index < params_.motor_count) {
+    state_.motor_desync[index] = on;
+  }
 }
 
 void Vehicle::reload(const VehicleParams& params, const physics::RigidBodyState& spawn) {
@@ -52,7 +60,8 @@ StepResult Vehicle::step(const MotorCommandArray& commands, const env::Air& air,
   double conductance = 0.0;
   for (std::size_t i = 0; i < params_.motor_count; ++i) {
     const physics::MotorParams& motor = params_.motors[i];
-    const double u = motors_off ? 0.0 : physics::quantize_command(commands[i]);
+    const double u =
+        (motors_off || state_.motor_desync[i]) ? 0.0 : physics::quantize_command(commands[i]);
     if (motor.model == physics::MotorModel::kDc) {
       const double kt = 1.0 / motor.kv_radps_per_v;
       conductance += u * u / motor.resistance_ohm;
@@ -73,7 +82,8 @@ StepResult Vehicle::step(const MotorCommandArray& commands, const env::Air& air,
                                     .bus_voltage_v = bus_voltage,
                                     .air_density_kg_m3 = air.density_kg_m3,
                                     .axial_inflow_mps = hub_velocity.dot(mount.axis_frd),
-                                    .height_above_ground_m = std::max(-hub_ned.z(), 0.0)};
+                                    .height_above_ground_m = std::max(-hub_ned.z(), 0.0),
+                                    .desync = state_.motor_desync[i]};
     result.motors[i] = physics::step_motor(params_.motors[i], params_.props[i],
                                            state_.motor_speed_radps[i], input, dt_s);
     state_.motor_speed_radps[i] = result.motors[i].speed_radps;

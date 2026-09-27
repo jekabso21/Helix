@@ -78,7 +78,8 @@ ImuSample ImuNoise::apply(const ImuSample& ideal,
 }
 
 BaroSample ImuNoise::apply_baro(double true_pressure_pa) {
-  return BaroSample{.pressure_pa = true_pressure_pa + params_.baro_bias_pa +
+  baro_drift_pa_ += params_.baro_drift_pa * std::sqrt(1.0 / params_.sample_rate_hz) * gaussian();
+  return BaroSample{.pressure_pa = true_pressure_pa + params_.baro_bias_pa + baro_drift_pa_ +
                                    params_.baro_noise_pa * gaussian()};
 }
 

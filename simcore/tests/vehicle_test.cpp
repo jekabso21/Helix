@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 
 #include <cmath>
+#include <cstdio>
 #include <numbers>
 
 #include <fpvsim/constants.hpp>
@@ -176,4 +177,44 @@ TEST(VehicleTest, PunchOutSagsWithoutOscillatingOrBrowningOut) {
               6.0 * fpvsim::physics::open_circuit_voltage(params.battery, b.soc) - r * b.current_a,
               1e-6);
   EXPECT_GT(b.current_a, 30.0);
+}
+
+namespace {
+
+// Terminal speed of a nose-down dive at full throttle; inertia is raised so attitude stays fixed
+// and the run measures translation only, with no controller in the loop.
+double terminal_speed_mps(bool with_inflow) {
+  sim::VehicleParams params = quad_params();
+  params.motors.fill(quad::dc_motor());
+  for (std::size_t i = 0; i < quad::kMotorCount; ++i) {
+    params.props[i].inflow_coefficient = with_inflow ? 1.0 : 0.0;
+  }
+  params.mass = fpvsim::physics::make_mass_properties(
+      quad::kMassKg, (Eigen::Vector3d(1.0, 1.0, 1.0) * 1e4).asDiagonal());
+  const double pitch = -30.0 * std::numbers::pi / 180.0;  // nose down
+  fpvsim::physics::RigidBodyState spawn = sim::spawn_state(params, 0.0, 0.0, 500.0, 0.0);
+  spawn.q_ned_from_frd = Eigen::Quaterniond(Eigen::AngleAxisd(pitch, Eigen::Vector3d::UnitY()));
+  sim::Vehicle vehicle(params, spawn);
+  sim::MotorCommandArray full{};
+  full.fill(1.0);
+  double speed = 0.0;
+  for (int i = 0; i < 20000; ++i) {  // 20 s is well past convergence
+    vehicle.step(full, kAir, i * 0.001, 0.001);
+    speed = vehicle.state().body.velocity_ned.head<2>().norm();
+  }
+  return speed;
+}
+
+}  // namespace
+
+TEST(VehicleTest, InflowLossLowersTopSpeed) {
+  const double without = terminal_speed_mps(false);
+  const double with = terminal_speed_mps(true);
+  RecordProperty("top_speed_no_inflow_mps", std::to_string(without));
+  RecordProperty("top_speed_with_inflow_mps", std::to_string(with));
+  std::printf("top speed: %.1f m/s without inflow, %.1f m/s with (%.0f %% lower)\n", without, with,
+              100.0 * (without - with) / without);
+  EXPECT_GT(without, 10.0);
+  EXPECT_LT(with, without);
+  EXPECT_GT(with, 0.5 * without);  // a plausible loss, not a collapse
 }

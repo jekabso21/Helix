@@ -38,6 +38,7 @@ struct VehicleState {
   std::array<double, physics::kMaxMotors> motor_speed_radps;
   std::array<double, physics::kMaxMotors> motor_consumed_ah;
   std::array<double, physics::kMaxMotors> motor_bus_current_a;
+  std::array<bool, physics::kMaxMotors> motor_desync;
   physics::BatteryState battery;
   bool crashed;
 };
@@ -59,6 +60,8 @@ class Vehicle {
   StepResult step(const MotorCommandArray& commands, const env::Air& air, double time_s,
                   double dt_s);
   void reset(const physics::RigidBodyState& spawn);
+  // Hook for failure injection: a desynced ESC stops driving and the rotor freewheels
+  void set_motor_desync(std::size_t index, bool on);
   // Swaps the model and resets to spawn; params are copied, no heap involved
   void reload(const VehicleParams& params, const physics::RigidBodyState& spawn);
 

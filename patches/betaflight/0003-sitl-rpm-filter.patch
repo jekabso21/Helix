@@ -1,0 +1,203 @@
+diff --git a/src/main/target/common_post.h b/src/main/target/common_post.h
+index 3e8abcf4d..0ef21e43e 100644
+--- a/src/main/target/common_post.h
++++ b/src/main/target/common_post.h
+@@ -681,7 +681,10 @@
+ #endif
+ 
+ #ifndef USE_DSHOT
++// SITL has no DShot driver; the simulator feeds motor frequencies to the RPM filter directly
++#ifndef SITL
+ #undef USE_DSHOT_TELEMETRY
++#endif
+ #undef USE_DSHOT_BITBANG
+ #endif
+ 
+diff --git a/src/platform/SIMULATOR/sitl.c b/src/platform/SIMULATOR/sitl.c
+index 99c578d23..1cde90640 100644
+--- a/src/platform/SIMULATOR/sitl.c
++++ b/src/platform/SIMULATOR/sitl.c
+@@ -32,6 +32,7 @@
+ 
+ #include "build/debug.h"
+ 
++#include "drivers/dshot.h"
+ #include "drivers/exti.h"
+ #include "drivers/io.h"
+ #include "drivers/dma.h"
+@@ -96,14 +97,76 @@ static rc_packet rcPkt;
+ static servo_packet pwmPkt;
+ static servo_packet_raw pwmRawPkt;
+ 
++static rpm_packet rpmPkt;
++static bool rpm_received = false;
++static float sitlMotorFrequencyHz[4];
++
++// drivers/dshot.c provides these only with USE_DSHOT; the RPM filter only needs these two
++bool useDshotTelemetry = true;
++
++float getMotorFrequencyHz(uint8_t motorIndex)
++{
++    return motorIndex < 4 ? sitlMotorFrequencyHz[motorIndex] : 0.0f;
++}
++
++float getMinMotorFrequencyHz(void)
++{
++    float minimum = sitlMotorFrequencyHz[0];
++    for (int i = 1; i < 4; i++) {
++        if (sitlMotorFrequencyHz[i] < minimum) {
++            minimum = sitlMotorFrequencyHz[i];
++        }
++    }
++    return minimum;
++}
++
++void updateDshotTelemetry(void)
++{
++    // The values arrive over UDP instead of being decoded from a DShot frame. The real driver
++    // fills this debug channel from the decoder, so the simulator fills it from the packet.
++    for (int i = 0; i < 4; i++) {
++        DEBUG_SET(DEBUG_DSHOT_RPM_TELEMETRY, i, (int16_t)lrintf(getDshotRpm(i)));
++    }
++}
++
++// The rest of the DShot telemetry API, which the OSD, MSP and blackbox read
++dshotTelemetryCycleCounters_t dshotDMAHandlerCycleCounters;
++dshotTelemetryState_t dshotTelemetryState;
++
++uint16_t getDshotErpm(uint8_t motorIndex)
++{
++    // eRPM, as a real ESC reports it: mechanical Hz x 60 x pole pairs
++    return (uint16_t)(getMotorFrequencyHz(motorIndex) * SECONDS_PER_MINUTE
++                      * (motorConfig()->motorPoleCount / 2.0f));
++}
++
++float getDshotRpm(uint8_t motorIndex)
++{
++    return getMotorFrequencyHz(motorIndex) * SECONDS_PER_MINUTE;
++}
++
++float getDshotRpmAverage(void)
++{
++    float total = 0.0f;
++    for (int i = 0; i < 4; i++) {
++        total += sitlMotorFrequencyHz[i];
++    }
++    return total / 4.0f * SECONDS_PER_MINUTE;
++}
++
++bool isDshotTelemetryActive(void)
++{
++    return true;
++}
++
+ static bool rc_received = false;
+ static bool fdm_received = false;
+ 
+ static struct timespec start_time;
+ static double simRate = 1.0;
+-static pthread_t tcpWorker, udpWorker, udpWorkerRC;
++static pthread_t tcpWorker, udpWorker, udpWorkerRC, udpWorkerRPM;
+ static bool workerRunning = true;
+-static udpLink_t stateLink, pwmLink, pwmRawLink, rcLink, escRequestLink;
++static udpLink_t stateLink, pwmLink, pwmRawLink, rcLink, escRequestLink, rpmLink;
+ static pthread_mutex_t updateLock;
+ static pthread_mutex_t mainLoopLock;
+ static char simulator_ip[32] = "127.0.0.1";
+@@ -203,6 +266,7 @@ static void gpxTrackClose(void)
+ #define PORT_STATE      9003    // In
+ #define PORT_RC         9004    // In
+ #define PORT_ESC_REQUEST 9005   // Out
++#define PORT_RPM        9006    // In
+ 
+ int targetParseArgs(int argc, char * argv[])
+ {
+@@ -562,6 +626,28 @@ static void *udpRCThread(void *data)
+     return NULL;
+ }
+ 
++static void *udpRPMThread(void *data)
++{
++    UNUSED(data);
++
++    while (workerRunning) {
++        if (udpRecv(&rpmLink, &rpmPkt, sizeof(rpm_packet), 100) == sizeof(rpm_packet)) {
++            if (!rpm_received) {
++                printf("[SITL] new rpm: t:%f %.0f %.0f %.0f %.0f Hz\n", rpmPkt.timestamp,
++                    (double)rpmPkt.motor_frequency_hz[0], (double)rpmPkt.motor_frequency_hz[1],
++                    (double)rpmPkt.motor_frequency_hz[2], (double)rpmPkt.motor_frequency_hz[3]);
++                rpm_received = true;
++            }
++            for (int i = 0; i < 4; i++) {
++                sitlMotorFrequencyHz[i] = rpmPkt.motor_frequency_hz[i];
++            }
++        }
++    }
++
++    printf("udpRPMThread end!!\n");
++    return NULL;
++}
++
+ static void* tcpThread(void* data)
+ {
+     UNUSED(data);
+@@ -620,6 +706,9 @@ void systemInit(void)
+     ret = udpInit(&stateLink, NULL, PORT_STATE, true);
+     printf("[SITL] start UDP server @%d...%d\n", PORT_STATE, ret);
+ 
++    ret = udpInit(&rpmLink, NULL, PORT_RPM, true);
++    printf("[SITL] start UDP server for motor RPM @%d...%d\n", PORT_RPM, ret);
++
+     ret = udpInit(&rcLink, NULL, PORT_RC, true);
+     printf("[SITL] start UDP server for RC input @%d...%d\n", PORT_RC, ret);
+ 
+@@ -634,6 +723,12 @@ void systemInit(void)
+         printf("Create udpRCThread error!\n");
+         exit(1);
+     }
++
++    ret = pthread_create(&udpWorkerRPM, NULL, udpRPMThread, NULL);
++    if (ret != 0) {
++        printf("Create udpRPMThread error!\n");
++        exit(1);
++    }
+ }
+ 
+ void systemReset(void)
+@@ -896,9 +991,6 @@ void servoWrite(uint8_t index, float value)
+ #define SITL_ERPM_PER_LSB 100.0f
+ static float sitlErpmToHz;
+ 
+-// The OSD asks whether DShot telemetry is live; SITL gets its RPM from the virtual ESC instead
+-bool useDshotTelemetry = false;
+-
+ void initDshotTelemetry(const timeUs_t looptimeUs)
+ {
+     UNUSED(looptimeUs);
+diff --git a/src/platform/SIMULATOR/target/SITL/target.h b/src/platform/SIMULATOR/target/SITL/target.h
+index 307dae47e..ead79f795 100644
+--- a/src/platform/SIMULATOR/target/SITL/target.h
++++ b/src/platform/SIMULATOR/target/SITL/target.h
+@@ -144,6 +144,9 @@
+ #define USE_CMS
+ #define USE_MSP_DISPLAYPORT
+ #define USE_OSD_OVER_MSP_DISPLAYPORT
++// The simulator knows every rotor speed exactly, so it feeds the RPM filter over UDP
++#define USE_DSHOT_TELEMETRY
++#define USE_RPM_FILTER
+ // UART1 (configurator), UART2 and UART3 already take the three default MSP slots; the
+ // DisplayPort port needs FUNCTION_MSP to be opened at all, so SITL gets room for more
+ #define MAX_MSP_PORT_COUNT 5
+@@ -260,6 +263,12 @@ typedef struct {
+     float motor_speed[4];   // normal: [0.0, 1.0], 3D: [-1.0, 1.0]
+ } servo_packet;
+ 
++// The simulator's rotor speeds, standing in for bidirectional DShot telemetry
++typedef struct {
++    double timestamp;                   // in seconds
++    float motor_frequency_hz[4];        // mechanical revolutions per second, per motor
++} rpm_packet;
++
+ typedef struct {
+     uint16_t motorCount; // Count of motor in the PWM output.
+     float pwm_output_raw[SIMULATOR_MAX_PWM_CHANNELS];   // Raw PWM from 1100 to 1900

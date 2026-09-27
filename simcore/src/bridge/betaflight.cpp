@@ -27,6 +27,15 @@ proto::FdmPacket make_fdm_packet(const FdmInput& input) {
   };
 }
 
+proto::RpmPacket make_rpm_packet(double sim_time_s,
+                                 const std::array<double, kMotorCount>& frequency_hz) {
+  proto::RpmPacket packet{.timestamp = sim_time_s, .motor_frequency_hz = {}};
+  for (std::size_t i = 0; i < kMotorCount; ++i) {
+    packet.motor_frequency_hz[i] = static_cast<float>(frequency_hz[i]);
+  }
+  return packet;
+}
+
 proto::RcPacket make_rc_packet(double sim_time_s, const RcChannels& channels) {
   return proto::RcPacket{.timestamp = sim_time_s, .channels = channels};
 }
@@ -43,7 +52,8 @@ BetaflightLink::BetaflightLink(const Endpoints& endpoints)
     : motor_socket_(net::UdpSocket::bound(endpoints.host, endpoints.pwm_port)),
       out_socket_(net::UdpSocket::unbound()),
       fdm_address_(net::make_address(endpoints.host, endpoints.fdm_port)),
-      rc_address_(net::make_address(endpoints.host, endpoints.rc_port)) {}
+      rc_address_(net::make_address(endpoints.host, endpoints.rc_port)),
+      rpm_address_(net::make_address(endpoints.host, endpoints.rpm_port)) {}
 
 void BetaflightLink::send_fdm(const FdmInput& input) noexcept {
   const proto::FdmPacket packet = make_fdm_packet(input);
@@ -55,6 +65,14 @@ void BetaflightLink::send_fdm(const FdmInput& input) noexcept {
 void BetaflightLink::send_rc(double sim_time_s, const RcChannels& channels) noexcept {
   const proto::RcPacket packet = make_rc_packet(sim_time_s, channels);
   if (!out_socket_.send_to(as_bytes(packet), rc_address_)) {
+    ++counters_.send_failures;
+  }
+}
+
+void BetaflightLink::send_rpm(double sim_time_s,
+                              const std::array<double, kMotorCount>& frequency_hz) noexcept {
+  const proto::RpmPacket packet = make_rpm_packet(sim_time_s, frequency_hz);
+  if (!out_socket_.send_to(as_bytes(packet), rpm_address_)) {
     ++counters_.send_failures;
   }
 }

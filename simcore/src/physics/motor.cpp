@@ -42,7 +42,11 @@ MotorOutput step_motor(const MotorParams& motor, const PropParams& prop, double 
   double next = 0.0;
   double current = 0.0;
   double bus_current = 0.0;
-  if (motor.model == MotorModel::kDc) {
+  if (input.desync) {
+    // no electrical torque at all; J dw/dt = -k_q rho w^2, solved implicitly so any dt is stable
+    const double drag = prop.torque_coefficient * rho;
+    next = speed_radps / (1.0 + dt_s * drag * speed_radps / motor.rotor_inertia_kg_m2);
+  } else if (motor.model == MotorModel::kDc) {
     // J w' = Kt (I - I0) - Q, I = (u V - Ke w) / R; back-EMF term taken implicitly
     const double kt = 1.0 / motor.kv_radps_per_v;  // Ke = Kt in SI
     const double v_m = command * input.bus_voltage_v;

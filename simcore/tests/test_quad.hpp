@@ -71,7 +71,8 @@ inline physics::MotorInput still_air(double command) {
                              .bus_voltage_v = kBusVoltage,
                              .air_density_kg_m3 = 1.225,
                              .axial_inflow_mps = 0.0,
-                             .height_above_ground_m = 100.0};
+                             .height_above_ground_m = 100.0,
+                             .desync = false};
 }
 
 inline physics::BatteryParams quad_battery() {
@@ -133,6 +134,7 @@ inline sensors::ImuNoiseParams quiet_imu() {
                                  .vibration_gyro_gain = 0.0,
                                  .baro_noise_pa = 0.0,
                                  .baro_bias_pa = 0.0,
+                                 .baro_drift_pa = 0.0,
                                  .seed = 1};
 }
 

@@ -36,6 +36,7 @@ struct MotorInput {
   double air_density_kg_m3;
   double axial_inflow_mps;       // hub airspeed along the thrust axis, positive when climbing
   double height_above_ground_m;  // rotor hub above the ground, for ground effect
+  bool desync;                   // ESC stopped commutating: the rotor freewheels against prop drag
 };
 
 struct MotorOutput {

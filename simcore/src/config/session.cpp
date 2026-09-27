@@ -142,6 +142,7 @@ SessionConfig parse_session(const std::string& json_text, const std::filesystem:
   cfg.betaflight.pwm_port = bf.at("ports").at("pwm").get<std::uint16_t>();
   cfg.betaflight.fdm_port = bf.at("ports").at("fdm").get<std::uint16_t>();
   cfg.betaflight.rc_port = bf.at("ports").at("rc").get<std::uint16_t>();
+  cfg.betaflight.rpm_port = bf.at("ports").at("rpm").get<std::uint16_t>();
   const Reader esc = bf.at("esc");
   cfg.esc = {.enabled = esc.at("enabled").get<bool>(),
              .host = cfg.betaflight.host,
@@ -292,6 +293,7 @@ sim::VehicleParams parse_drone(const std::string& json_text, const std::filesyst
       .vibration_gyro_gain = imu_noise.at("vibration_gyro_gain_radps_per_mps2").number(),
       .baro_noise_pa = baro.at("noise_pa").number(),
       .baro_bias_pa = baro.at("bias_pa").number(),
+      .baro_drift_pa = baro.at("drift_pa").number(),
       .seed = 0};
 
   const Reader aero = root.at("aero");

@@ -26,7 +26,8 @@ struct ImuNoiseParams {
   double vibration_blade_pass;  // fraction of the fundamental at blades x rotation frequency
   double vibration_gyro_gain;   // rad/s of gyro vibration per m/s^2 of accel vibration
   double baro_noise_pa;         // white noise standard deviation per sample
-  double baro_bias_pa;
+  double baro_bias_pa;          // fixed offset
+  double baro_drift_pa;         // random walk of the offset, Pa/sqrt(s)
   std::uint64_t seed;
 };
 
@@ -46,6 +47,7 @@ class ImuNoise {
 
   [[nodiscard]] const Eigen::Vector3d& gyro_bias() const { return gyro_bias_; }
   [[nodiscard]] const Eigen::Vector3d& accel_bias() const { return accel_bias_; }
+  [[nodiscard]] double baro_drift() const { return baro_drift_pa_; }
 
  private:
   Eigen::Vector3d vibration(const std::array<physics::MotorOutput, physics::kMaxMotors>& motors,
@@ -57,6 +59,7 @@ class ImuNoise {
   std::normal_distribution<double> normal_;
   Eigen::Vector3d gyro_bias_;
   Eigen::Vector3d accel_bias_;
+  double baro_drift_pa_ = 0.0;
   std::array<std::array<double, 3>, physics::kMaxMotors> phase_;
   std::array<Eigen::Vector3d, physics::kMaxMotors> axis_weight_;
 };

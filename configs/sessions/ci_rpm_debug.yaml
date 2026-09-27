@@ -1,0 +1,8 @@
+# ci_hover with Betaflight's DShot RPM debug channel on, so tests can read the RPM it uses
+extends: ci_hover.yaml
+name: ci_rpm_debug
+duration_s: 26
+betaflight:
+  cli_extra:
+    - aux 1 1 0 900 2100 0 0   # ANGLE mode always on
+    - set debug_mode = DSHOT_RPM_TELEMETRY

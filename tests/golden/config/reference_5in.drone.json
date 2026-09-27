@@ -213,7 +213,8 @@
     },
     "baro": {
       "noise_pa": 3.0,
-      "bias_pa": 0.0
+      "bias_pa": 0.0,
+      "drift_pa": 0.2
     }
   },
   "imu": {

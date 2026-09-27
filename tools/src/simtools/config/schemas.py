@@ -17,6 +17,7 @@ class Ports(Strict):
     fdm: int = 9003
     rc: int = 9004
     esc_request: int = 9005
+    rpm: int = 9006
     esc_uart: int = 4
     osd_uart: int = 5
     uart_base: int = 5761
@@ -36,6 +37,11 @@ DEFAULT_OSD_ELEMENTS: dict[str, tuple[int, int]] = {
     "ah": (25, 5),
     "ah_sbar": (25, 9),
 }
+
+
+class RpmFilterConfig(Strict):
+    enabled: bool = True
+    harmonics: int = Field(default=3, ge=0, le=3)  # 0 turns the notches off
 
 
 class OsdConfig(Strict):
@@ -62,6 +68,7 @@ class BetaflightConfig(Strict):
     ports: Ports = Field(default_factory=Ports)
     virtual_esc: bool = True
     osd: OsdConfig = Field(default_factory=OsdConfig)
+    rpm_filter: RpmFilterConfig = Field(default_factory=RpmFilterConfig)
 
 
 class OriginConfig(Strict):
@@ -407,6 +414,7 @@ class ImuNoiseConfig(Strict):
 class BaroConfig(Strict):
     noise_pa: float = Field(default=3.0, ge=0.0)
     bias_pa: float = 0.0
+    drift_pa_rts: float = Field(default=0.2, ge=0.0)  # random walk of the offset, Pa/sqrt(s)
 
 
 class SensorsConfig(Strict):

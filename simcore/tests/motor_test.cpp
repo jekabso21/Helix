@@ -163,3 +163,28 @@ TEST(MotorTest, CommandIsClampedAndSpeedNeverNegative) {
       physics::step_motor(quad::dc_motor(), prop, 1.0, quad::still_air(0.0), 0.01).speed_radps,
       0.0);
 }
+
+TEST(MotorTest, DesyncedMotorFreewheelsAndStopsDriving) {
+  const physics::MotorParams motor = quad::dc_motor();
+  const physics::PropParams prop = quad::quad_prop();
+  physics::MotorInput input = quad::still_air(1.0);
+  double speed = 0.0;
+  for (int i = 0; i < 3000; ++i) {
+    speed = physics::step_motor(motor, prop, speed, input, 0.001).speed_radps;
+  }
+  const double spinning = speed;
+  EXPECT_GT(spinning, 1000.0);
+
+  input.desync = true;
+  physics::MotorOutput output = physics::step_motor(motor, prop, speed, input, 0.001);
+  EXPECT_DOUBLE_EQ(output.current_a, 0.0);
+  EXPECT_DOUBLE_EQ(output.bus_current_a, 0.0);
+  EXPECT_LT(output.speed_radps, spinning);  // prop drag alone slows it
+  EXPECT_GT(output.thrust_n, 0.0);          // it still turns, so it still makes some thrust
+  speed = output.speed_radps;
+  for (int i = 0; i < 20000; ++i) {  // 20 s of freewheeling
+    speed = physics::step_motor(motor, prop, speed, input, 0.001).speed_radps;
+  }
+  EXPECT_LT(speed, 0.05 * spinning);
+  EXPECT_GE(speed, 0.0);
+}

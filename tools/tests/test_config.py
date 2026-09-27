@@ -23,6 +23,8 @@ def test_ci_hover_session_resolves_to_si_json() -> None:
     assert "feature ESC_SENSOR" in resolved.cli_lines
     assert "serial 3 1024 115200 57600 0 115200" in resolved.cli_lines
     assert "set motor_poles = 14" in resolved.cli_lines
+    assert "set rpm_filter_harmonics = 3" in resolved.cli_lines
+    assert session["betaflight"]["ports"]["rpm"] == 9006
     assert session["betaflight"]["esc"] == {
         "enabled": True,
         "request_port": 9005,

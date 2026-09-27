@@ -96,7 +96,11 @@ TEST(BridgeTest, ServoPacketIsClampedToUnitRange) {
 namespace {
 
 bf::Endpoints loopback() {
-  return {.host = "127.0.0.1", .pwm_port = 19002, .fdm_port = 19003, .rc_port = 19004};
+  return {.host = "127.0.0.1",
+          .pwm_port = 19002,
+          .fdm_port = 19003,
+          .rc_port = 19004,
+          .rpm_port = 19006};
 }
 
 template <typename Predicate>
@@ -141,4 +145,22 @@ TEST(BridgeTest, LinkKeepsTheNewestMotorPacketAndCountsMalformedOnes) {
   EXPECT_EQ(link.counters().motor_packets, 2U);
   EXPECT_EQ(link.counters().malformed_packets, 1U);
   EXPECT_NEAR(commands.command[3], 0.8, 1e-6);
+}
+
+TEST(BridgeTest, RpmPacketCarriesMechanicalHzPerMotor) {
+  const std::array<double, bf::kMotorCount> hz{100.0, 250.5, 0.0, 399.25};
+  const auto packet = bf::make_rpm_packet(1.5, hz);
+  EXPECT_DOUBLE_EQ(packet.timestamp, 1.5);
+  for (std::size_t i = 0; i < bf::kMotorCount; ++i) {
+    EXPECT_FLOAT_EQ(packet.motor_frequency_hz[i], static_cast<float>(hz[i])) << "motor " << i;
+  }
+  // the SITL reads it as a fixed 24-byte struct: double then four floats, no padding
+  const auto bytes = bf::as_bytes(packet);
+  ASSERT_EQ(bytes.size(), 24U);
+  double timestamp = 0.0;
+  float first = 0.0F;
+  std::memcpy(&timestamp, bytes.data(), sizeof(timestamp));
+  std::memcpy(&first, bytes.data() + 8, sizeof(first));
+  EXPECT_DOUBLE_EQ(timestamp, 1.5);
+  EXPECT_FLOAT_EQ(first, 100.0F);
 }

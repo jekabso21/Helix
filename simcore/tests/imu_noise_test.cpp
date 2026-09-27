@@ -26,6 +26,7 @@ sensors::ImuNoiseParams quiet() {
                                  .vibration_gyro_gain = 0.0,
                                  .baro_noise_pa = 0.0,
                                  .baro_bias_pa = 0.0,
+                                 .baro_drift_pa = 0.0,
                                  .seed = 42};
 }
 
@@ -160,4 +161,21 @@ TEST(ImuNoiseTest, BarometerAddsBiasAndNoise) {
   const double mean = sum / n;
   EXPECT_NEAR(mean, 30.0, 0.2);
   EXPECT_NEAR(std::sqrt(sum_sq / n - mean * mean), 5.0, 0.2);
+}
+
+TEST(ImuNoiseTest, BarometerDriftIsARandomWalkOnTopOfTheBias) {
+  sensors::ImuNoiseParams params = quiet();
+  params.baro_drift_pa = 2.0;  // Pa/sqrt(s)
+  const int runs = 200;
+  const int steps = 1000;  // 1 s at 1 kHz
+  double sum_sq = 0.0;
+  for (int r = 0; r < runs; ++r) {
+    params.seed = 5000 + r;
+    sensors::ImuNoise noise(params);
+    for (int i = 0; i < steps; ++i) {
+      noise.apply_baro(101325.0);
+    }
+    sum_sq += noise.baro_drift() * noise.baro_drift();
+  }
+  EXPECT_NEAR(std::sqrt(sum_sq / runs), params.baro_drift_pa, 0.15 * params.baro_drift_pa);
 }

@@ -8,6 +8,7 @@ fpvsim_add_test(simcore_model_tests
     motor_test.cpp
     propulsion_test.cpp
     rigid_body_test.cpp
+    thrust_table_test.cpp
     step_stats_test.cpp
     LIBS fpvsim::simcore_models)
 
@@ -22,6 +23,7 @@ fpvsim_add_test(simcore_tests
     vehicle_test.cpp
     LIBS fpvsim::simcore)
 target_compile_definitions(simcore_tests PRIVATE FPVSIM_GOLDEN_DIR="${PROJECT_SOURCE_DIR}/tests/golden")
+target_compile_definitions(simcore_model_tests PRIVATE FPVSIM_DATA_DIR="${PROJECT_SOURCE_DIR}/data")
 
 set(bf_target_h
     ${PROJECT_SOURCE_DIR}/third_party/betaflight/src/platform/SIMULATOR/target/SITL/target.h)

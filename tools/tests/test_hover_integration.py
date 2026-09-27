@@ -1,6 +1,7 @@
 import csv
 import math
 import socket
+import struct
 import threading
 import time
 from datetime import datetime
@@ -215,3 +216,58 @@ def test_hover_motor_outputs_follow_the_moment_balance_after_a_battery_shift(
     assert d > 0.005
     assert measured > 0.0, (front, rear)
     assert abs(measured - predicted) <= 0.1 * predicted, (measured, predicted)
+
+
+class RpmObserver(threading.Thread):
+    """Reads what Betaflight believes the rotors are doing, mid-flight."""
+
+    def __init__(self) -> None:
+        super().__init__(daemon=True)
+        self.error: str | None = None
+        self.debug_rpm: tuple[int, ...] = ()
+        self.sim_rpm: list[float] = []
+
+    def run(self) -> None:
+        try:
+            time.sleep(18.0)  # armed and hovering
+            msp = connect_uart(5763, timeout_s=10.0, check_msp=True)
+            try:
+                self.debug_rpm = struct.unpack_from("<8H", msp.request(MspCommand.DEBUG))
+            finally:
+                msp.close()
+            with ControlClient(timeout_s=5.0) as client:
+                self.sim_rpm = [m["rpm"] for m in client.request("get_state")["motors"]]
+        except Exception as error:
+            self.error = f"{type(error).__name__}: {error}"
+
+
+@pytest.mark.skipif(not SITL_BINARY.exists(), reason="Betaflight SITL not built")
+@pytest.mark.skipif(
+    not any(
+        (REPO_ROOT / "build" / p / "simcore/simcore").exists()
+        for p in ("release", "ci", "clang", "dev")
+    ),
+    reason="simcore not built",
+)
+def test_betaflight_sees_the_simulated_rotor_speeds(tmp_path: Path) -> None:
+    """The RPM filter is fed by DShot telemetry, which the simulator stands in for over UDP."""
+    if sitl_port_busy():
+        pytest.skip("a Betaflight SITL is already running on TCP 5761")
+    resolved = resolve_session(REPO_ROOT / "configs/sessions/ci_rpm_debug.yaml", REPO_ROOT)
+    assert "set rpm_filter_harmonics = 3" in resolved.cli_lines  # the notches are enabled
+    assert resolved.session["betaflight"]["ports"]["rpm"] == 9006
+    run_dir = write_run_directory(resolved, tmp_path, REPO_ROOT, ["pytest"])
+    observer = RpmObserver()
+    observer.start()
+    result = run_headless(resolved, run_dir, find_simcore(REPO_ROOT))
+    observer.join(timeout=10.0)
+    assert result.exit_code == 0, (run_dir / "logs/simcore.log").read_text()
+    assert observer.error is None, observer.error
+
+    assert len(observer.sim_rpm) == 4
+    assert all(rpm > 4000.0 for rpm in observer.sim_rpm), observer.sim_rpm
+    # Betaflight fills DEBUG_DSHOT_RPM_TELEMETRY from the packet, as its DShot driver would
+    for motor, (seen, simulated) in enumerate(
+        zip(observer.debug_rpm[:4], observer.sim_rpm, strict=True)
+    ):
+        assert abs(seen - simulated) < 0.05 * simulated, (motor, seen, simulated)

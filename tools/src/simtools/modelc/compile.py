@@ -245,7 +245,11 @@ def to_json(model: CompiledDrone) -> dict[str, Any]:
                 "vibration_blade_pass": imu.vibration_blade_pass,
                 "vibration_gyro_gain_radps_per_mps2": imu.vibration_gyro_gain_radps_per_mps2,
             },
-            "baro": {"noise_pa": sensors.baro.noise_pa, "bias_pa": sensors.baro.bias_pa},
+            "baro": {
+                "noise_pa": sensors.baro.noise_pa,
+                "bias_pa": sensors.baro.bias_pa,
+                "drift_pa": sensors.baro.drift_pa_rts,
+            },
         },
         "imu": {
             "position_frd_m": _list(model.imu.position_frd_m),
