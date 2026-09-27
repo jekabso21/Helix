@@ -11,6 +11,7 @@ betaflight:
     - aux 1 1 0 900 2100 0 0   # ANGLE mode always on
 drone: configs/drones/reference_5in.yaml
 environment: configs/environments/calm_15c.yaml
+cameras: [configs/cameras/generic_fpv.yaml]
 origin: { lat_deg: 56.0, lon_deg: 24.0, altitude_m: 0 }
 spawn: { north_m: 0, east_m: 0, height_agl_m: 0, heading_deg: 0 }
 input:

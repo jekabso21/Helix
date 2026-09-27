@@ -3,9 +3,12 @@ import math
 from pathlib import Path
 
 import pytest
+import yaml
+from pydantic import ValidationError
 
 from simtools.config import load_yaml, resolve_session, write_run_directory
 from simtools.config.resolver import ConfigError, hover_throttle_us, load_drone
+from simtools.config.schemas import CameraConfig
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SESSION = REPO_ROOT / "configs/sessions/ci_hover.yaml"
@@ -141,3 +144,44 @@ def test_mapping_rejects_unknown_channel_and_double_source(tmp_path: Path) -> No
     )
     with pytest.raises(ConfigError, match="exactly one"):
         resolve_session(session, REPO_ROOT)
+
+
+def test_cameras_resolve_into_the_document_simvideo_reads() -> None:
+    resolved = resolve_session(SESSION, REPO_ROOT)
+    cameras = resolved.cameras
+    assert cameras["schema_version"] == 1
+    assert cameras["status_port"] == 7730
+    assert len(cameras["cameras"]) == 1
+    camera = cameras["cameras"][0]
+    assert camera["name"] == "main_fpv"  # the drone mounts a camera by that name
+    assert (camera["width"], camera["height"]) == (1280, 720)
+    assert camera["pixel_format"] == "rgb8"
+    assert camera["sensor_latency_s"] == pytest.approx(0.012)
+    assert camera["outputs"][0]["enabled"] is True
+    assert "v4l2sink" in camera["outputs"][0]["pipeline"]
+    assert camera["optics"]["hfov_rad"] == pytest.approx(math.radians(120.0))
+    assert camera["optics"]["rolling_shutter_readout_s"] == pytest.approx(0.008)
+
+
+def test_a_camera_without_a_mount_on_the_drone_is_rejected(tmp_path: Path) -> None:
+    camera = (REPO_ROOT / "configs/cameras/generic_fpv.yaml").read_text()
+    (tmp_path / "ghost.yaml").write_text(camera.replace("name: main_fpv", "name: not_mounted"))
+    session = load_yaml(SESSION)
+    session["cameras"] = [str(tmp_path / "ghost.yaml")]
+    (tmp_path / "session.yaml").write_text(yaml.safe_dump(session))
+    with pytest.raises(ConfigError, match="no mount on the drone"):
+        resolve_session(tmp_path / "session.yaml", REPO_ROOT)
+
+
+def test_odd_camera_resolutions_are_rejected(tmp_path: Path) -> None:
+    camera = (REPO_ROOT / "configs/cameras/generic_fpv.yaml").read_text()
+    (tmp_path / "odd.yaml").write_text(camera.replace("[1280, 720]", "[1281, 720]"))
+    with pytest.raises(ValidationError, match="even"):
+        CameraConfig.model_validate(load_yaml(tmp_path / "odd.yaml"))
+
+
+def test_the_run_directory_carries_cameras_json(tmp_path: Path) -> None:
+    resolved = resolve_session(SESSION, REPO_ROOT)
+    run_dir = write_run_directory(resolved, tmp_path, REPO_ROOT, ["pytest"])
+    written = json.loads((run_dir / "resolved/cameras.json").read_text())
+    assert written["cameras"][0]["name"] == "main_fpv"

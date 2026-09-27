@@ -156,9 +156,57 @@ class AppConfig(Strict):
     state_rate_hz: int = 100
 
 
+class VideoConfig(Strict):
+    enabled: bool = True
+    status_port: int = 7730
+
+
 class LoggingConfig(Strict):
     rate_hz: int = 200
     root: str = "runs"
+
+
+class IntrinsicsConfig(Strict):
+    hfov_deg: float = Field(default=120.0, gt=0.0, lt=180.0)
+
+
+class DistortionConfig(Strict):
+    model: Literal["fisheye", "none"] = "fisheye"
+    k: tuple[float, float, float, float] = (0.0, 0.0, 0.0, 0.0)  # OpenCV fisheye coefficients
+
+
+class ExposureConfig(Strict):
+    mode: Literal["auto", "manual"] = "auto"
+    shutter_s: float = Field(default=0.004, gt=0.0)
+
+
+class CameraNoiseConfig(Strict):
+    base: float = Field(default=0.01, ge=0.0)
+    low_light_gain: float = Field(default=4.0, ge=0.0)
+
+
+class CameraConfig(Strict):
+    schema_version: Literal[1]
+    name: str  # must match a camera mount in the drone parts list
+    resolution: tuple[int, int] = (1280, 720)
+    fps: float = Field(default=60.0, gt=0.0)
+    projection: Literal["pinhole_then_distort"] = "pinhole_then_distort"
+    intrinsics: IntrinsicsConfig = Field(default_factory=IntrinsicsConfig)
+    distortion: DistortionConfig = Field(default_factory=DistortionConfig)
+    exposure: ExposureConfig = Field(default_factory=ExposureConfig)
+    rolling_shutter_readout_s: float = Field(default=0.0, ge=0.0)
+    sensor_latency_s: float = Field(default=0.0, ge=0.0)
+    noise: CameraNoiseConfig = Field(default_factory=CameraNoiseConfig)
+    outputs: list[str] = Field(default_factory=list[str])
+
+    @model_validator(mode="after")
+    def resolution_is_usable(self) -> "CameraConfig":
+        width, height = self.resolution
+        if width <= 0 or height <= 0:
+            raise ValueError("resolution must be positive")
+        if width % 2 != 0 or height % 2 != 0:
+            raise ValueError("resolution must be even; most encoders reject odd sizes")
+        return self
 
 
 class SessionConfig(Strict):
@@ -171,12 +219,14 @@ class SessionConfig(Strict):
     betaflight: BetaflightConfig = Field(default_factory=BetaflightConfig)
     drone: str
     environment: str
+    cameras: list[str] = Field(default_factory=list[str])
     terrain: Literal["flat"] = "flat"
     origin: OriginConfig = Field(default_factory=OriginConfig)
     spawn: SpawnConfig = Field(default_factory=SpawnConfig)
     input: InputConfig = Field(default_factory=InputConfig)
     control_api: ControlApiConfig = Field(default_factory=ControlApiConfig)
     app: AppConfig = Field(default_factory=AppConfig)
+    video: VideoConfig = Field(default_factory=VideoConfig)
     logging: LoggingConfig = Field(default_factory=LoggingConfig)
 
     @model_validator(mode="after")

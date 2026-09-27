@@ -12,6 +12,7 @@ from pydantic import ValidationError
 
 from simtools.config import units
 from simtools.config.schemas import (
+    CameraConfig,
     DroneConfig,
     EnvironmentConfig,
     InputMappingConfig,
@@ -65,9 +66,9 @@ def _validation_message(path: Path, error: ValidationError) -> str:
     return "\n".join(lines)
 
 
-def _load_model[T: SessionConfig | DroneConfig | EnvironmentConfig | InputMappingConfig](
-    model: type[T], path: Path
-) -> T:
+def _load_model[
+    T: SessionConfig | DroneConfig | EnvironmentConfig | InputMappingConfig | CameraConfig
+](model: type[T], path: Path) -> T:
     try:
         return model.model_validate(load_yaml(path))
     except ValidationError as error:
@@ -80,6 +81,7 @@ class ResolvedSession:
     session: dict[str, Any]
     drone: dict[str, Any]
     drone_config: DroneConfig
+    cameras: dict[str, Any]
     cli_lines: list[str]
     betaflight_binary: Path
     ports: dict[str, int]
@@ -118,6 +120,17 @@ def resolve_session(session_path: Path, base_dir: Path) -> ResolvedSession:
     session = _load_model(SessionConfig, session_path)
     drone = load_drone(base_dir / session.drone, base_dir)
     environment = _load_model(EnvironmentConfig, base_dir / session.environment)
+    cameras = [_load_model(CameraConfig, base_dir / path) for path in session.cameras]
+    mounted = {mount.name for mount in drone.cameras}
+    for camera in cameras:
+        if camera.name not in mounted:
+            raise ConfigError(
+                f"{session_path}: camera '{camera.name}' has no mount on the drone; "
+                f"the drone offers {sorted(mounted) or 'none'}"
+            )
+    duplicates = {c.name for c in cameras if [x.name for x in cameras].count(c.name) > 1}
+    if duplicates:
+        raise ConfigError(f"{session_path}: camera names must be unique: {sorted(duplicates)}")
     cli_script = base_dir / session.betaflight.cli_script
     if not cli_script.exists():
         raise ConfigError(f"{session_path}: betaflight.cli_script not found: {cli_script}")
@@ -228,11 +241,50 @@ def resolve_session(session_path: Path, base_dir: Path) -> ResolvedSession:
         session=resolved,
         drone=resolve_drone(drone),
         drone_config=drone,
+        cameras=resolve_cameras(cameras, session.betaflight.host, session.video.status_port),
         cli_lines=cli_lines,
         betaflight_binary=base_dir / session.betaflight.binary,
         ports={"uart_base": session.betaflight.ports.uart_base, **ports},
         logging_root=session.logging.root,
     )
+
+
+def resolve_cameras(cameras: list[CameraConfig], host: str, status_port: int) -> dict[str, Any]:
+    """The document simvideo reads (docs/INTERFACES.md 5.1); the app uses the optical fields."""
+    return {
+        "schema_version": RESOLVED_SCHEMA_VERSION,
+        "host": host,
+        "status_port": status_port,
+        "cameras": [
+            {
+                "name": camera.name,
+                "width": camera.resolution[0],
+                "height": camera.resolution[1],
+                "fps": camera.fps,
+                "pixel_format": "rgb8",
+                "sensor_latency_s": camera.sensor_latency_s,
+                "outputs": [{"pipeline": pipeline, "enabled": True} for pipeline in camera.outputs],
+                "optics": {
+                    "projection": camera.projection,
+                    "hfov_rad": units.deg_to_rad(camera.intrinsics.hfov_deg),
+                    "distortion": {
+                        "model": camera.distortion.model,
+                        "k": list(camera.distortion.k),
+                    },
+                    "exposure": {
+                        "mode": camera.exposure.mode,
+                        "shutter_s": camera.exposure.shutter_s,
+                    },
+                    "rolling_shutter_readout_s": camera.rolling_shutter_readout_s,
+                    "noise": {
+                        "base": camera.noise.base,
+                        "low_light_gain": camera.noise.low_light_gain,
+                    },
+                },
+            }
+            for camera in cameras
+        ],
+    }
 
 
 def _git_commit(directory: Path) -> str | None:
@@ -258,6 +310,7 @@ def write_run_directory(
     (run_dir / "resolved/session.json").write_text(json.dumps(resolved.session, indent=2))
     (run_dir / "resolved/drone.json").write_text(json.dumps(resolved.drone, indent=2))
     (run_dir / "resolved/drone.glb").write_bytes(export_glb(compile_drone(resolved.drone_config)))
+    (run_dir / "resolved/cameras.json").write_text(json.dumps(resolved.cameras, indent=2))
     (run_dir / "betaflight/cli.txt").write_text("\n".join(resolved.cli_lines) + "\n")
     meta = {
         "created_utc": stamp,

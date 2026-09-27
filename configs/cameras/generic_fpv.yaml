@@ -1,0 +1,14 @@
+# Placeholder FPV camera, not the target hardware; outputs are GStreamer fragments
+schema_version: 1
+name: main_fpv                  # must match a camera mount in the drone parts list
+resolution: [1280, 720]
+fps: 60
+projection: pinhole_then_distort
+intrinsics: { hfov_deg: 120 }
+distortion: { model: fisheye, k: [0.0, 0.0, 0.0, 0.0] }
+exposure: { mode: auto, shutter_s: 0.004 }
+rolling_shutter_readout_s: 0.008
+sensor_latency_s: 0.012
+noise: { base: 0.01, low_light_gain: 4.0 }
+outputs:
+  - "video/x-raw,format=YUY2 ! v4l2sink device=/dev/video10"
