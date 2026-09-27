@@ -207,6 +207,7 @@ def resolve_session(session_path: Path, base_dir: Path) -> ResolvedSession:
             },
             "osd": {
                 "enabled": osd.enabled,
+                "font": str(base_dir / osd.font) if osd.font else None,
                 "uart_port": osd_uart_port,
                 "cols": osd.canvas_cols,
                 "rows": osd.canvas_rows,

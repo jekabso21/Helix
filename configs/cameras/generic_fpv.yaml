@@ -12,3 +12,7 @@ sensor_latency_s: 0.012
 noise: { base: 0.01, low_light_gain: 4.0 }
 outputs:
   - "video/x-raw,format=YUY2 ! v4l2sink device=/dev/video10"
+  # RTP over UDP, received with the pipeline in docs/INTERFACES.md section 5:
+  # - "openh264enc ! h264parse ! rtph264pay config-interval=1 ! udpsink host=127.0.0.1 port=5600 sync=false"
+  # RTSP push to a server such as MediaMTX (needs gstreamer1-rtsp-server):
+  # - "openh264enc ! h264parse ! rtspclientsink location=rtsp://127.0.0.1:8554/fpvsim"

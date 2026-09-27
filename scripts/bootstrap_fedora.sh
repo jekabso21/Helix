@@ -22,7 +22,7 @@ if [[ "${1:-}" == "--video-outputs" ]]; then
     sudo dnf install -y \
         "https://mirrors.rpmfusion.org/free/fedora/rpmfusion-free-release-${release}.noarch.rpm"
     sudo dnf install -y gstreamer1-plugins-ugly akmod-v4l2loopback \
-        "kernel-devel-$(uname -r)" gstreamer1-plugins-bad-free
+        "kernel-devel-$(uname -r)" gstreamer1-plugins-bad-free gstreamer1-rtsp-server
     sudo akmods --force
     # one loopback device the camera outputs can write to
     echo "options v4l2loopback devices=1 video_nr=10 card_label=fpvsim exclusive_caps=1" |
@@ -31,6 +31,9 @@ if [[ "${1:-}" == "--video-outputs" ]]; then
     sudo modprobe -r v4l2loopback 2>/dev/null || true
     sudo modprobe v4l2loopback
     echo "v4l2loopback ready: $(ls /dev/video* 2>/dev/null | tr '\n' ' ')"
+    echo "rtspclientsink: $(gst-inspect-1.0 rtspclientsink >/dev/null 2>&1 && echo yes || echo no)"
+    echo "An RTSP output also needs a server to push to, for example MediaMTX, which is a single"
+    echo "binary from its releases page; nothing in this repository downloads it for you."
 fi
 
 # Fedora's uv does not download interpreters on demand

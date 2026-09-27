@@ -46,6 +46,7 @@ class RpmFilterConfig(Strict):
 
 class OsdConfig(Strict):
     enabled: bool = True
+    font: str | None = None  # MAX7456 .mcm or a PNG atlas of stacked glyphs; none draws look-alikes
     video_system: Literal["hd", "pal", "ntsc"] = "hd"
     canvas_cols: int = Field(default=53, ge=1, le=63)
     canvas_rows: int = Field(default=20, ge=1, le=31)
