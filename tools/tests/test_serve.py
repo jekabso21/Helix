@@ -208,3 +208,75 @@ def test_session_outlives_the_client_that_started_it() -> None:
         except subprocess.TimeoutExpired:
             os.killpg(backend.pid, signal.SIGKILL)
             backend.wait(timeout=5.0)
+
+
+VIDEO_REPORT = {
+    "version": 1,
+    "camera": "main_fpv",
+    "input_fps": 59.9,
+    "late_frames": 0,
+    "outputs": [
+        {
+            "index": 0,
+            "pipeline": "v4l2sink device=/dev/video10",
+            "state": "running",
+            "fps": 59.9,
+            "bitrate_bps": None,
+            "last_error": None,
+        },
+        {
+            "index": 1,
+            "pipeline": "udpsink port=5600",
+            "state": "error",
+            "fps": 0.0,
+            "bitrate_bps": None,
+            "last_error": "could not link",
+        },
+    ],
+}
+
+
+def test_video_status_datagrams_reach_subscribers(server: Server) -> None:
+    port = free_port()
+    supervisor = server.supervisor
+    supervisor.watch_video_status(port)
+    client = LineClient(server.server_address[1])
+    try:
+        client.request("subscribe", {"topic": "video"})
+        sender = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        deadline = time.monotonic() + 5.0
+        while time.monotonic() < deadline:
+            sender.sendto(json.dumps(VIDEO_REPORT).encode(), ("127.0.0.1", port))
+            try:
+                event = client.next_event()
+            except (TimeoutError, OSError):
+                continue
+            if event["event"] == "video":
+                break
+        else:
+            pytest.fail("no video event arrived")
+        assert event["data"]["camera"] == "main_fpv"
+        assert [o["state"] for o in event["data"]["outputs"]] == ["running", "error"]
+        assert client.request("get_video")["result"]["cameras"][0]["outputs"][1]["last_error"] == (
+            "could not link"
+        )
+        sender.close()
+    finally:
+        supervisor.stop()
+        client.close()
+
+
+def test_a_malformed_video_datagram_is_ignored(server: Server) -> None:
+    from simtools.simctl.serve import _video_report
+
+    assert _video_report(b"not json") is None
+    assert _video_report(json.dumps({"version": 2, "camera": "c", "outputs": []}).encode()) is None
+    assert _video_report(json.dumps({"version": 1, "outputs": []}).encode()) is None
+    assert _video_report(json.dumps(VIDEO_REPORT).encode())["camera"] == "main_fpv"
+
+
+def test_subscribe_rejects_an_unknown_topic(server: Server) -> None:
+    client = LineClient(server.server_address[1])
+    error = client.request("subscribe", {"topic": "nonsense"})["error"]
+    assert error["code"] == "invalid_params" and "video" in error["message"]
+    client.close()
