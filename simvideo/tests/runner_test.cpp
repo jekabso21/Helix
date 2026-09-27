@@ -171,3 +171,38 @@ TEST(RunnerTest, RtpH264OutputIsReceivedAndDecoded) {
   gst_object_unref(receiver);
   EXPECT_GE(decoded, 5) << "the RTP stream never arrived at a standard receiver";
 }
+
+// Frames start arriving well after the pipeline went playing. A PTS counted from the first frame
+// would then look seconds late to a clock-syncing sink (v4l2sink drops those and nothing reaches
+// the device), so the first frame is placed at the current running time while the sim-time deltas
+// between frames are kept exactly.
+TEST(RunnerTest, FirstPtsIsPlacedAtRunningTimeAndDeltasAreKept) {
+  video::CameraRunner runner(camera(
+      {{.pipeline = "appsink name=out sync=false max-buffers=8 drop=false", .enabled = true}}));
+  runner.start();
+  std::this_thread::sleep_for(std::chrono::milliseconds(300));  // the pipeline clock runs on
+
+  const std::vector<std::byte> pixels(static_cast<std::size_t>(kWidth) * kHeight * 3,
+                                      std::byte{0x20});
+  constexpr std::int64_t kPeriodNs = 16'666'667;
+
+  GstElement* pipeline = nullptr;
+  GstElement* sink = nullptr;
+  ASSERT_TRUE(video::find_appsink_for_test(runner, 0, reinterpret_cast<void**>(&pipeline),
+                                           reinterpret_cast<void**>(&sink)));
+  // pull each frame before pushing the next: the branch queue is leaky by design
+  std::vector<GstClockTime> stamps;
+  for (int i = 0; i < 3; ++i) {
+    runner.push_frame(pixels, static_cast<std::int64_t>(i) * kPeriodNs);
+    GstSample* sample = gst_app_sink_try_pull_sample(GST_APP_SINK(sink), 500 * GST_MSECOND);
+    ASSERT_NE(sample, nullptr) << "frame " << i << " never arrived";
+    stamps.push_back(GST_BUFFER_PTS(gst_sample_get_buffer(sample)));
+    gst_sample_unref(sample);
+  }
+  gst_object_unref(sink);
+  runner.stop();
+
+  EXPECT_GE(stamps.front(), 200 * GST_MSECOND) << "the first PTS was not moved to running time";
+  EXPECT_EQ(stamps[1] - stamps[0], static_cast<GstClockTime>(kPeriodNs));
+  EXPECT_EQ(stamps[2] - stamps[1], static_cast<GstClockTime>(kPeriodNs));
+}

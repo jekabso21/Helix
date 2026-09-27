@@ -108,6 +108,23 @@ void OutputBranch::fail(const std::string& message, std::chrono::steady_clock::t
   backoff_ = std::min(backoff_ * 2, kMaxBackoff);
 }
 
+std::int64_t OutputBranch::running_time_ns() const {
+  if (pipeline_ == nullptr || state_ != "running") {
+    return -1;
+  }
+  GstClock* clock = gst_element_get_clock(as_element(pipeline_));
+  if (clock == nullptr) {
+    return -1;
+  }
+  const GstClockTime now = gst_clock_get_time(clock);
+  const GstClockTime base = gst_element_get_base_time(as_element(pipeline_));
+  gst_object_unref(clock);
+  if (now == GST_CLOCK_TIME_NONE || base == GST_CLOCK_TIME_NONE || now < base) {
+    return -1;
+  }
+  return static_cast<std::int64_t>(now - base);
+}
+
 void OutputBranch::push(void* buffer) {
   if (appsrc_ == nullptr || state_ != "running") {
     return;
@@ -201,12 +218,27 @@ void CameraRunner::push_frame(std::span<const std::byte> pixels, std::int64_t pt
   if (pixels.empty() || branches_.empty()) {
     return;
   }
+  if (pts_offset_ns_ < 0) {
+    // Frames start arriving after the pipelines went playing, so a PTS counted from the first
+    // frame would look badly late to a clock-syncing sink such as v4l2sink. Place the first
+    // frame at the current running time; sim-time deltas between frames are kept exactly.
+    for (const auto& branch : branches_) {
+      const std::int64_t running = branch->running_time_ns();
+      if (running >= 0) {
+        pts_offset_ns_ = running;
+        break;
+      }
+    }
+    if (pts_offset_ns_ < 0) {
+      pts_offset_ns_ = 0;
+    }
+  }
   GstBuffer* buffer = gst_buffer_new_allocate(nullptr, pixels.size(), nullptr);
   if (buffer == nullptr) {
     return;
   }
   gst_buffer_fill(buffer, 0, pixels.data(), pixels.size());
-  GST_BUFFER_PTS(buffer) = static_cast<GstClockTime>(pts_ns);
+  GST_BUFFER_PTS(buffer) = static_cast<GstClockTime>(pts_ns + pts_offset_ns_);
   GST_BUFFER_DURATION(buffer) =
       camera_.fps > 0.0 ? static_cast<GstClockTime>(GST_SECOND / camera_.fps) : GST_CLOCK_TIME_NONE;
   for (auto& branch : branches_) {
@@ -237,6 +269,22 @@ CameraStatus CameraRunner::status() {
     status.outputs.push_back(branch->status(now));
   }
   return status;
+}
+
+bool find_appsink_for_test(CameraRunner& runner, std::size_t branch, void** pipeline_out,
+                           void** sink_out) {
+  OutputBranch* output = runner.branch_for_test(branch);
+  if (output == nullptr || output->pipeline_for_test() == nullptr) {
+    return false;
+  }
+  auto* pipeline = static_cast<GstElement*>(output->pipeline_for_test());
+  GstElement* sink = gst_bin_get_by_name(GST_BIN(pipeline), "out");
+  if (sink == nullptr) {
+    return false;
+  }
+  *pipeline_out = pipeline;
+  *sink_out = sink;
+  return true;
 }
 
 }  // namespace fpvsim::video

@@ -31,8 +31,11 @@ class OutputBranch {
   void push(void* buffer);
   // Drains the bus and restarts a failed branch once its backoff has passed
   void poll(std::chrono::steady_clock::time_point now);
+  // Running time of this pipeline, or -1 when it is not playing; used to place the first PTS
+  [[nodiscard]] std::int64_t running_time_ns() const;
   [[nodiscard]] OutputStatus status(std::chrono::steady_clock::time_point now);
   [[nodiscard]] const std::string& description() const { return description_; }
+  [[nodiscard]] void* pipeline_for_test() const { return pipeline_; }
 
  private:
   void fail(const std::string& message, std::chrono::steady_clock::time_point now);
@@ -68,10 +71,14 @@ class CameraRunner {
   void note_late_frame() { ++late_frames_; }
   [[nodiscard]] CameraStatus status();
   [[nodiscard]] const CameraSpec& camera() const { return camera_; }
+  [[nodiscard]] OutputBranch* branch_for_test(std::size_t index) const {
+    return index < branches_.size() ? branches_[index].get() : nullptr;
+  }
 
  private:
   CameraSpec camera_;
   std::vector<std::unique_ptr<OutputBranch>> branches_;
+  std::int64_t pts_offset_ns_ = -1;  // set on the first frame, see push_frame
   std::uint64_t frames_ = 0;
   std::uint64_t frames_at_window_ = 0;
   std::uint64_t late_frames_ = 0;
@@ -81,5 +88,9 @@ class CameraRunner {
 
 // Calls gst_init once; safe to call repeatedly
 void init_gstreamer();
+
+// Test hook: hands out the named element of one branch's pipeline, ref'd
+bool find_appsink_for_test(CameraRunner& runner, std::size_t branch, void** pipeline_out,
+                           void** sink_out);
 
 }  // namespace fpvsim::video
