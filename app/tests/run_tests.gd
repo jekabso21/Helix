@@ -13,6 +13,7 @@ func _initialize() -> void:
 	_test_plots_panel()
 	_test_osd_overlay()
 	_test_frame_publisher()
+	_test_camera_panel_follows_the_config()
 	print("%d checks, %d failures" % [checks, failures])
 	quit(1 if failures > 0 else 0)
 
@@ -45,6 +46,14 @@ func _test_frames() -> void:
 	var pitch := deg_to_rad(20.0) / 2.0
 	var qp := Frames.godot_quat_from_ned_frd(cos(pitch), 0.0, sin(pitch), 0.0)
 	check((qp * Vector3(0, 0, -1)).y > 0.3, "nose up raises the nose")
+	# FRD y is the right axis, so a positive rotation about it pitches the nose up
+	var uptilt := Quaternion(Vector3(0, 1, 0), deg_to_rad(35.0))
+	var g := Frames.godot_quat_from_frd(uptilt)
+	var look := g * Vector3(0, 0, -1)
+	check(look.y > 0.4 and look.z < -0.7, "an FRD uptilt tilts the Godot camera up, got %s" % look)
+	var downtilt := Frames.godot_quat_from_frd(Quaternion(Vector3(0, 1, 0), deg_to_rad(-35.0)))
+	check((downtilt * Vector3(0, 0, -1)).y < -0.4, "and a negative one tilts it down")
+	check(absf(g.length() - 1.0) < 1e-6, "the converted rotation stays a unit quaternion")
 
 
 func _test_render_state_golden() -> void:
@@ -157,3 +166,40 @@ func _test_frame_publisher() -> void:
 		f.seek(128 + 128)
 		check(f.get_8() == 0xAB, "the pixels reached the ring")
 	publisher.close()
+
+
+## The camera panel takes its resolution, fps, field of view and mount from the resolved config,
+## so changing the camera YAML or moving the camera part changes what is rendered.
+func _test_camera_panel_follows_the_config() -> void:
+	var dir := "user://camera_cfg_test"
+	DirAccess.make_dir_recursive_absolute(dir + "/resolved")
+	var cameras := {
+		"schema_version": 1, "host": "127.0.0.1", "status_port": 7730,
+		"cameras": [{
+			"name": "probe_fpv", "width": 640, "height": 480, "fps": 30.0,
+			"pixel_format": "rgb8", "sensor_latency_s": 0.0, "outputs": [],
+			"optics": {"hfov_rad": deg_to_rad(90.0)},
+		}],
+	}
+	# camera part pitched 35 deg nose up, as the model compiler writes it
+	var uptilt := Quaternion(Vector3(0, 1, 0), deg_to_rad(35.0))
+	var drone := {"cameras": [{
+		"name": "probe_fpv",
+		"position_frd_m": [0.055, 0.0, -0.015],
+		"q_frd_from_camera": [uptilt.w, uptilt.x, uptilt.y, uptilt.z],
+	}]}
+	_write_json(dir + "/resolved/cameras.json", cameras)
+	_write_json(dir + "/resolved/drone.json", drone)
+
+	var panel: Variant = load("res://ui/camera_panel.gd").new()
+	panel._load_mount(ProjectSettings.globalize_path(dir), "probe_fpv")
+	check(panel.mount_position_frd.is_equal_approx(Vector3(0.055, 0.0, -0.015)), "mount position from the compiled model, got %s" % panel.mount_position_frd)
+	var look := Frames.godot_quat_from_frd(panel.mount_q_frd_from_camera) * Vector3(0, 0, -1)
+	check(look.y > 0.4, "a 35 deg nose-up camera part tilts the view up, got %s" % look)
+	panel.free()
+
+
+func _write_json(path: String, data: Dictionary) -> void:
+	var f := FileAccess.open(path, FileAccess.WRITE)
+	f.store_string(JSON.stringify(data))
+	f.close()

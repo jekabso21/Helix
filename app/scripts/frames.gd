@@ -21,6 +21,12 @@ static func godot_quat_from_ned_frd(w: float, x: float, y: float, z: float) -> Q
 	return Quaternion(v.x, v.y, v.z, w)
 
 
+## A rotation expressed in the FRD body frame, as the Godot body frame sees it
+static func godot_quat_from_frd(q: Quaternion) -> Quaternion:
+	var v := godot_body_from_frd(Vector3(q.x, q.y, q.z))
+	return Quaternion(v.x, v.y, v.z, q.w)
+
+
 static func heading_rad(q: Quaternion) -> float:
 	# yaw of q_ned_from_frd, positive from North to East, from the Godot-frame quaternion
 	var nose := q * Vector3(0.0, 0.0, -1.0)
