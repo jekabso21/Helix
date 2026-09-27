@@ -247,26 +247,50 @@ func _read_json(path: String) -> Variant:
 	return JSON.parse_string(text) if text != "" else null
 
 
-## simvideo reports every output twice a second; a failed one is named without hiding the others
+## simvideo reports every output twice a second; a failed one is named without hiding the others,
+## and the switch on each row turns that output off or on while the session runs
 func _on_video(data: Dictionary) -> void:
 	var feed := selected_feed()
 	if feed == null or str(data.get("camera", "")) != feed.name:
 		return
 	var outputs: Array = data.get("outputs", [])
 	while _outputs.get_child_count() < outputs.size():
-		var label := Label.new()
-		label.clip_text = true
-		_outputs.add_child(label)
+		_outputs.add_child(_make_output_row(_outputs.get_child_count()))
 	while _outputs.get_child_count() > outputs.size():
 		var extra := _outputs.get_child(_outputs.get_child_count() - 1)
 		_outputs.remove_child(extra)
 		extra.queue_free()
 	for i in outputs.size():
 		var output: Dictionary = outputs[i]
-		var label: Label = _outputs.get_child(i)
+		var row := _outputs.get_child(i)
+		var toggle: CheckButton = row.get_child(0)
+		var label: Label = row.get_child(1)
+		toggle.set_pressed_no_signal(str(output.get("state", "")) != "disabled")
 		label.text = output_summary(output)
 		label.tooltip_text = str(output.get("pipeline", ""))
 		label.add_theme_color_override("font_color", output_colour(str(output.get("state", ""))))
+
+
+func _make_output_row(index: int) -> HBoxContainer:
+	var row := HBoxContainer.new()
+	var toggle := CheckButton.new()
+	toggle.tooltip_text = "Run this output"
+	toggle.toggled.connect(func(on: bool) -> void: _set_output_enabled(index, on))
+	row.add_child(toggle)
+	var label := Label.new()
+	label.clip_text = true
+	label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_child(label)
+	return row
+
+
+func _set_output_enabled(index: int, enabled: bool) -> void:
+	var feed := selected_feed()
+	if feed == null:
+		return
+	BackendClient.request("set_output_enabled", {
+		"camera": feed.name, "index": index, "enabled": enabled
+	})
 
 
 static func output_summary(output: Dictionary) -> String:

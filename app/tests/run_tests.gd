@@ -289,4 +289,14 @@ func _test_camera_selector() -> void:
 	check(panel._feeds[1].osd == false, "a camera can turn the OSD off")
 	check(panel._feeds[1].viewport.get_child_count() == 1, "and then gets no OSD overlay node")
 	check(panel._feeds[0].viewport.get_child_count() == 2, "while the main camera keeps one")
+	panel._on_video({"camera": "rear_fpv", "outputs": [
+		{"index": 0, "state": "running", "fps": 30.0},
+		{"index": 1, "state": "disabled", "fps": 0.0},
+	]})
+	check(panel._outputs.get_child_count() == 2, "one row per output")
+	var first_toggle: CheckButton = panel._outputs.get_child(0).get_child(0)
+	var second_toggle: CheckButton = panel._outputs.get_child(1).get_child(0)
+	check(first_toggle.button_pressed and not second_toggle.button_pressed, "the switches follow the reported state")
+	panel._on_video({"camera": "main_fpv", "outputs": []})
+	check(panel._outputs.get_child_count() == 2, "a report for another camera is ignored")
 	panel.queue_free()
