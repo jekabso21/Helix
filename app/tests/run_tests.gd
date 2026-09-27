@@ -14,6 +14,7 @@ func _initialize() -> void:
 	_test_osd_overlay()
 	_test_frame_publisher()
 	_test_camera_panel_follows_the_config()
+	_test_camera_rotation_shift()
 	print("%d checks, %d failures" % [checks, failures])
 	quit(1 if failures > 0 else 0)
 
@@ -203,3 +204,23 @@ func _write_json(path: String, data: Dictionary) -> void:
 	var f := FileAccess.open(path, FileAccess.WRITE)
 	f.store_string(JSON.stringify(data))
 	f.close()
+
+
+## Rolling shutter and motion blur are both "how far did the camera turn in this interval"
+func _test_camera_rotation_shift() -> void:
+	var panel := load("res://ui/camera_panel.gd")
+	var half_hfov := deg_to_rad(90.0) / 2.0   # tan(45 deg) = 1, so the maths is easy to follow
+	var aspect := 2.0
+	check(panel.rotation_uv_shift(Vector3.ZERO, 0.01, half_hfov, aspect) == Vector2.ZERO, "a still camera does not shift")
+	check(panel.rotation_uv_shift(Vector3(1, 1, 1), 0.0, half_hfov, aspect) == Vector2.ZERO, "a zero interval does not shift")
+	# yaw is about FRD z (down): 0.2 rad over the interval, half-width tan(45) = 1 -> u = 0.1
+	var yaw: Vector2 = panel.rotation_uv_shift(Vector3(0, 0, 0.2), 1.0, half_hfov, aspect)
+	check(absf(yaw.x - 0.1) < 1e-6 and absf(yaw.y) < 1e-9, "yaw shifts horizontally by rate/2tan, got %s" % yaw)
+	# pitch is about FRD y (right); the vertical half-angle is smaller, so the same rate shifts more
+	var pitch: Vector2 = panel.rotation_uv_shift(Vector3(0, 0.2, 0), 1.0, half_hfov, aspect)
+	check(absf(pitch.y - 0.2) < 1e-6 and absf(pitch.x) < 1e-9, "pitch shifts vertically by aspect x more, got %s" % pitch)
+	# roll is not a translation, so it is left out rather than approximated
+	check(panel.rotation_uv_shift(Vector3(5.0, 0, 0), 1.0, half_hfov, aspect) == Vector2.ZERO, "roll does not translate the image")
+	# twice the interval, twice the shift
+	var double: Vector2 = panel.rotation_uv_shift(Vector3(0, 0, 0.2), 2.0, half_hfov, aspect)
+	check(absf(double.x - 2.0 * yaw.x) < 1e-9, "the shift scales with the interval")

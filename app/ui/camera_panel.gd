@@ -15,6 +15,11 @@ var camera_size := FALLBACK_SIZE
 var camera_fps := 60.0
 var mount_position_frd := FALLBACK_MOUNT_FRD
 var mount_q_frd_from_camera := Quaternion(Vector3(0, 1, 0), deg_to_rad(FALLBACK_UPTILT_DEG))
+var distortion_k := Vector4.ZERO
+var rolling_shutter_s := 0.0
+var shutter_s := 0.0
+var noise_base := 0.0
+var half_hfov_rad := deg_to_rad(FALLBACK_HFOV_DEG) * 0.5
 
 var _publisher: Variant = null
 var _shown: ImageTexture = null
@@ -29,6 +34,8 @@ var _run_dir := ""
 
 @onready var _header: Label = $Header
 @onready var _viewport: SubViewport = $SubViewport
+@onready var _post_viewport: SubViewport = $PostViewport
+@onready var _post: TextureRect = $PostViewport/Post
 @onready var _camera: Camera3D = $SubViewport/Camera3D
 @onready var _view: TextureRect = $View
 @onready var _raw_toggle: CheckButton = $OutputRow/RawTcp
@@ -61,8 +68,14 @@ func _ready() -> void:
 func _apply_camera(size: Vector2i, hfov_deg: float) -> void:
 	camera_size = size
 	_viewport.size = size
+	_post_viewport.size = size
+	_post.texture = _viewport.get_texture()
 	_camera.keep_aspect = Camera3D.KEEP_WIDTH
 	_camera.fov = hfov_deg
+	half_hfov_rad = deg_to_rad(hfov_deg) * 0.5
+	var material: ShaderMaterial = _post.material
+	material.set_shader_parameter("half_hfov_rad", half_hfov_rad)
+	material.set_shader_parameter("aspect", float(size.x) / float(size.y))
 
 
 func _update_command() -> void:
@@ -92,6 +105,11 @@ func _load_camera(run_dir: String) -> void:
 	camera_fps = float(camera["fps"])
 	var optics: Dictionary = camera.get("optics", {})
 	var hfov_deg: float = rad_to_deg(float(optics.get("hfov_rad", deg_to_rad(FALLBACK_HFOV_DEG))))
+	var k: Array = (optics.get("distortion", {}) as Dictionary).get("k", [0, 0, 0, 0])
+	distortion_k = Vector4(k[0], k[1], k[2], k[3])
+	rolling_shutter_s = float(optics.get("rolling_shutter_readout_s", 0.0))
+	shutter_s = float((optics.get("exposure", {}) as Dictionary).get("shutter_s", 0.0))
+	noise_base = float((optics.get("noise", {}) as Dictionary).get("base", 0.0))
 	_apply_camera(Vector2i(int(camera["width"]), int(camera["height"])), hfov_deg)
 	_load_mount(run_dir, camera_name)
 	_update_command()
@@ -171,10 +189,11 @@ func _process(_delta: float) -> void:
 		_camera.quaternion = rotation * Frames.godot_quat_from_frd(mount_q_frd_from_camera)
 		time_text = "t %.1f s" % (state.sim_time_ns * 1e-9)
 
+	_update_post(state)
 	var wants_publish := _publisher != null and state != null and state.sim_time_ns >= _next_publish_ns
 	var status := ""
 	if _raw != null or wants_publish:
-		var pixels := _viewport.get_texture().get_image().get_data()
+		var pixels := _post_viewport.get_texture().get_image().get_data()
 		if _raw != null:
 			_raw.push(pixels)
 			status = "  raw: %d written, %d dropped%s" % [
@@ -190,6 +209,34 @@ func _process(_delta: float) -> void:
 	_header.text = "%s %dx%d@%d  %s%s" % [
 		camera_name, camera_size.x, camera_size.y, roundi(camera_fps), time_text, status
 	]
+
+
+## Rolling shutter and motion blur both come from how far the camera turns during an interval
+static func rotation_uv_shift(rate_frd: Vector3, seconds: float, half_hfov: float, aspect: float) -> Vector2:
+	if seconds <= 0.0 or half_hfov <= 0.0:
+		return Vector2.ZERO
+	var half_width := tan(half_hfov)          # half-width of the image plane at unit distance
+	var half_height := half_width / aspect
+	# yaw right moves the scene left, so the sample point moves right; pitch up moves it down
+	var yaw := rate_frd.z * seconds
+	var pitch := rate_frd.y * seconds
+	return Vector2(yaw / (2.0 * half_width), pitch / (2.0 * half_height))
+
+
+func _update_post(state: RenderState) -> void:
+	var material: ShaderMaterial = _post.material
+	var rate := Vector3.ZERO
+	if state != null:
+		# the camera turns with the body; its own mount is fixed, so the body rate is the camera rate
+		rate = mount_q_frd_from_camera.inverse() * state.angular_rate_frd
+	var aspect := float(camera_size.x) / float(camera_size.y)
+	var blur := rotation_uv_shift(rate, shutter_s, half_hfov_rad, aspect)
+	material.set_shader_parameter("distortion_k", distortion_k)
+	material.set_shader_parameter("rolling_shutter_shift", rotation_uv_shift(rate, rolling_shutter_s, half_hfov_rad, aspect))
+	material.set_shader_parameter("motion_blur_shift", blur)
+	material.set_shader_parameter("motion_blur_taps", 8 if blur.length() > 0.001 else 1)
+	material.set_shader_parameter("noise_sigma", noise_base)
+	material.set_shader_parameter("noise_seed", float(_frame_index % 1024))
 
 
 ## The panel shows the bytes that went to the outputs, so what you see is what they receive
