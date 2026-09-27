@@ -46,6 +46,8 @@ uv run --project tools simctl run configs/sessions/ci_hover.yaml --headless   # 
 uv run --project tools python tools/spikes/spin_motors.py   # arm Betaflight SITL, read motors
 uv run --project tools python tools/spikes/radio_passthrough.py --duration 60   # USB radio -> SITL
 ./scripts/configurator_bridge.sh                            # WebSocket bridge for app.betaflight.com
+uv run --project tools simctl latency --consumer "v4l2src device=/dev/video10"  # sim-to-output video latency
+uv run --project tools simctl frame-timestamps               # frame sim time against the live state
 ```
 
 ## License
