@@ -19,3 +19,4 @@ enable_testing()
 
 add_subdirectory(common)
 add_subdirectory(simcore)
+add_subdirectory(simvideo)
