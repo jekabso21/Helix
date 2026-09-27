@@ -280,3 +280,41 @@ def test_subscribe_rejects_an_unknown_topic(server: Server) -> None:
     error = client.request("subscribe", {"topic": "nonsense"})["error"]
     assert error["code"] == "invalid_params" and "video" in error["message"]
     client.close()
+
+
+def test_set_output_enabled_needs_a_running_session(server: Server) -> None:
+    client = LineClient(server.server_address[1])
+    error = client.request(
+        "set_output_enabled", {"camera": "main_fpv", "index": 0, "enabled": False}
+    )["error"]
+    assert error["code"] == "invalid_state"
+    client.close()
+
+
+def test_set_output_enabled_sends_a_datagram_to_simvideo(server: Server) -> None:
+    from simtools.config.resolver import resolve_session
+
+    control = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    control.bind(("127.0.0.1", 0))
+    control.settimeout(5.0)
+    port = control.getsockname()[1]
+    supervisor = server.supervisor
+    resolved = resolve_session(REPO_ROOT / "configs/sessions/ci_hover.yaml", REPO_ROOT)
+    resolved.cameras["control_port"] = port
+    supervisor._resolved = resolved
+    client = LineClient(server.server_address[1])
+    try:
+        result = client.request(
+            "set_output_enabled", {"camera": "main_fpv", "index": 1, "enabled": False}
+        )["result"]
+        assert result["ok"] and result["index"] == 1
+        message = json.loads(control.recv(4096))
+        assert message == {"version": 1, "camera": "main_fpv", "index": 1, "enabled": False}
+        unknown = client.request(
+            "set_output_enabled", {"camera": "nope", "index": 0, "enabled": True}
+        )["error"]
+        assert unknown["code"] == "invalid_state" and "unknown camera" in unknown["message"]
+    finally:
+        supervisor._resolved = None
+        control.close()
+        client.close()

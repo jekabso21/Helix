@@ -159,6 +159,7 @@ class AppConfig(Strict):
 class VideoConfig(Strict):
     enabled: bool = True
     status_port: int = 7730
+    control_port: int = 7731
 
 
 class LoggingConfig(Strict):

@@ -380,6 +380,22 @@ class Supervisor:
         with self._lock:
             return {"cameras": [self._video_status[name] for name in sorted(self._video_status)]}
 
+    def set_output_enabled(self, camera: str, index: int, enabled: bool) -> Json:
+        """Tells simvideo to turn one output of one camera off or on; the next report shows it."""
+        with self._lock:
+            resolved = self._resolved
+            known = list(self._video_status)
+        if resolved is None or not resolved.video_enabled:
+            raise LaunchError("no session with video is running")
+        names = [str(camera_doc["name"]) for camera_doc in resolved.cameras["cameras"]]
+        if camera not in names:
+            raise LaunchError(f"unknown camera {camera}; this session has {', '.join(names)}")
+        message = {"version": 1, "camera": camera, "index": index, "enabled": enabled}
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        with sock:
+            sock.sendto(json.dumps(message).encode(), (HOST, int(resolved.cameras["control_port"])))
+        return {"ok": True, "camera": camera, "index": index, "enabled": enabled, "seen": known}
+
     def _start_video_status(self, resolved: ResolvedSession) -> None:
         if resolved.video_enabled:
             self.watch_video_status(int(resolved.cameras["status_port"]))
@@ -594,6 +610,13 @@ class Handler(socketserver.StreamRequestHandler):
                 return self._ok(request_id, supervisor.get_osd()), None
             if method == "get_video":
                 return self._ok(request_id, supervisor.get_video()), None
+            if method == "set_output_enabled":
+                return self._ok(
+                    request_id,
+                    supervisor.set_output_enabled(
+                        str(params["camera"]), int(params["index"]), bool(params["enabled"])
+                    ),
+                ), None
             if method == "subscribe":
                 topic = str(params.get("topic", ""))
                 if topic not in ("status", "fc", "osd", "video"):

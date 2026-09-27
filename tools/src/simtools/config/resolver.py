@@ -242,7 +242,12 @@ def resolve_session(session_path: Path, base_dir: Path) -> ResolvedSession:
         session=resolved,
         drone=resolve_drone(drone),
         drone_config=drone,
-        cameras=resolve_cameras(cameras, session.betaflight.host, session.video.status_port),
+        cameras=resolve_cameras(
+            cameras,
+            session.betaflight.host,
+            session.video.status_port,
+            session.video.control_port,
+        ),
         video_enabled=session.video.enabled and bool(cameras),
         cli_lines=cli_lines,
         betaflight_binary=base_dir / session.betaflight.binary,
@@ -251,12 +256,15 @@ def resolve_session(session_path: Path, base_dir: Path) -> ResolvedSession:
     )
 
 
-def resolve_cameras(cameras: list[CameraConfig], host: str, status_port: int) -> dict[str, Any]:
+def resolve_cameras(
+    cameras: list[CameraConfig], host: str, status_port: int, control_port: int
+) -> dict[str, Any]:
     """The document simvideo reads (docs/INTERFACES.md 5.1); the app uses the optical fields."""
     return {
         "schema_version": RESOLVED_SCHEMA_VERSION,
         "host": host,
         "status_port": status_port,
+        "control_port": control_port,
         "cameras": [
             {
                 "name": camera.name,
