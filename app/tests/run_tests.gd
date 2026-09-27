@@ -17,6 +17,7 @@ func _initialize() -> void:
 	_test_camera_panel_follows_the_config()
 	_test_camera_rotation_shift()
 	_test_output_status_lines()
+	_test_osd_font()
 	await _test_camera_selector()
 	print("%d checks, %d failures" % [checks, failures])
 	quit(1 if failures > 0 else 0)
@@ -304,3 +305,39 @@ func _test_camera_selector() -> void:
 	panel.use_world(world)
 	check(panel._feeds[0].viewport.world_3d == world and panel._feeds[1].viewport.world_3d == world, "every feed follows the world it is given")
 	panel.queue_free()
+
+
+## A real flight controller font: black, white and transparent pixels out of a MAX7456 file
+func _test_osd_font() -> void:
+	var script: Variant = load("res://ui/osd_font.gd")
+	var font: Variant = script.new()
+	check(not font.is_loaded(), "a fresh font draws nothing")
+	check(not font.load_path("/nonexistent/font.mcm") and font.error != "", "a missing file is reported")
+	check(not font.load_mcm_text("not a font"), "a file without the header is refused")
+
+	# two glyphs: the first all white, the second black on the first row and transparent below
+	var lines := PackedStringArray(["MAX7456"])
+	for row in 18:
+		for part in 3:
+			lines.append("10101010")
+	for _pad in 10:
+		lines.append("01010101")
+	for row in 18:
+		for part in 3:
+			lines.append("00000000" if row == 0 else "01010101")
+	for _pad in 10:
+		lines.append("01010101")
+	check(font.load_mcm_text("\n".join(lines)), "the font loads: " + font.error)
+	check(font.glyph_count == 2 and font.glyph_size == Vector2i(12, 18), "two 12x18 glyphs, got %d %s" % [font.glyph_count, font.glyph_size])
+	check(font.region(1) == Rect2(0, 18, 12, 18), "glyph 1 is the second row of the atlas")
+	check(font.region(200) == Rect2(0, 18, 12, 18), "a code past the end clamps to the last glyph")
+	var image: Image = font.texture.get_image()
+	check(image.get_pixel(0, 0) == Color(1, 1, 1, 1), "the first glyph is white")
+	check(image.get_pixel(0, 18) == Color(0, 0, 0, 1), "the second glyph starts black")
+	check(image.get_pixel(0, 19).a == 0.0, "and is transparent below")
+
+	var atlas: Variant = script.new()
+	var strip := Image.create(24, 36 * 256, false, Image.FORMAT_RGBA8)
+	check(atlas.load_image(strip) and atlas.glyph_count == 256, "a PNG atlas of 256 stacked glyphs")
+	check(atlas.glyph_size == Vector2i(24, 36), "glyph size from the strip, got %s" % atlas.glyph_size)
+	check(not script.new().load_image(Image.create(8, 7, false, Image.FORMAT_RGBA8)), "a strip that is not a whole number of glyphs is refused")
