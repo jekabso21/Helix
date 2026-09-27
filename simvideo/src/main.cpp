@@ -3,6 +3,7 @@
 #include <sys/socket.h>
 #include <unistd.h>
 
+#include <array>
 #include <atomic>
 #include <chrono>
 #include <csignal>
@@ -11,7 +12,13 @@
 #include <optional>
 #include <string>
 #include <thread>
+#include <utility>
 #include <vector>
+
+#include <map>
+#include <mutex>
+
+#include <nlohmann/json.hpp>
 
 #include <fpvsim/proto/frame_ring.hpp>
 #include <fpvsim/video/config.hpp>
@@ -60,8 +67,75 @@ class StatusSocket {
   sockaddr_in address_{};
 };
 
+// Commands from the control port, picked up by the camera thread that owns the pipelines
+class ControlMailbox {
+ public:
+  void post(std::size_t index, bool enabled) {
+    const std::lock_guard<std::mutex> guard(mutex_);
+    pending_.emplace_back(index, enabled);
+  }
+  std::vector<std::pair<std::size_t, bool>> take() {
+    const std::lock_guard<std::mutex> guard(mutex_);
+    return std::exchange(pending_, {});
+  }
+
+ private:
+  std::mutex mutex_;
+  std::vector<std::pair<std::size_t, bool>> pending_;
+};
+
+using Mailboxes = std::map<std::string, ControlMailbox>;
+
+// {"version": 1, "camera": "main_fpv", "index": 0, "enabled": false}
+void handle_control_datagram(const char* data, std::size_t size, Mailboxes& mailboxes) {
+  const nlohmann::json message = nlohmann::json::parse(data, data + size, nullptr, false);
+  if (message.is_discarded() || !message.is_object()) {
+    return;
+  }
+  if (!message.contains("version") || message["version"] != 1) {
+    return;
+  }
+  if (!message.contains("camera") || !message.contains("index") || !message.contains("enabled")) {
+    return;
+  }
+  const auto found = mailboxes.find(message["camera"].get<std::string>());
+  if (found == mailboxes.end() || !message["index"].is_number_unsigned() ||
+      !message["enabled"].is_boolean()) {
+    return;
+  }
+  found->second.post(message["index"].get<std::size_t>(), message["enabled"].get<bool>());
+}
+
+// Listens for output commands until the process stops
+void run_control(const std::string& host, std::uint16_t port, Mailboxes& mailboxes) {
+  const int fd = ::socket(AF_INET, SOCK_DGRAM | SOCK_CLOEXEC, 0);
+  if (fd < 0) {
+    return;
+  }
+  sockaddr_in address{};
+  address.sin_family = AF_INET;
+  address.sin_port = htons(port);
+  ::inet_pton(AF_INET, host.c_str(), &address.sin_addr);
+  if (::bind(fd, reinterpret_cast<const sockaddr*>(&address), sizeof(address)) != 0) {
+    std::cerr << "simvideo: control port " << port << " is taken; outputs cannot be switched\n";
+    ::close(fd);
+    return;
+  }
+  timeval timeout{.tv_sec = 0, .tv_usec = 200000};
+  ::setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
+  std::array<char, 4096> buffer{};
+  while (!g_stop.load(std::memory_order_relaxed)) {
+    const ssize_t received = ::recv(fd, buffer.data(), buffer.size(), 0);
+    if (received > 0) {
+      handle_control_datagram(buffer.data(), static_cast<std::size_t>(received), mailboxes);
+    }
+  }
+  ::close(fd);
+}
+
 // Feeds one camera: ring -> sensor latency hold -> the camera's output pipelines
-void run_camera(const fpvsim::video::CameraSpec& spec, const StatusSocket& status) {
+void run_camera(const fpvsim::video::CameraSpec& spec, const StatusSocket& status,
+                ControlMailbox& mailbox) {
   using namespace std::chrono_literals;
   fpvsim::video::CameraRunner runner(spec);
   runner.start();
@@ -124,6 +198,10 @@ void run_camera(const fpvsim::video::CameraSpec& spec, const StatusSocket& statu
       did_work = true;
     }
 
+    for (const auto& [index, enabled] : mailbox.take()) {
+      runner.set_output_enabled(index, enabled);
+      did_work = true;
+    }
     runner.poll();
     if (now >= next_status) {
       next_status = now + 500ms;
@@ -161,14 +239,25 @@ int main(int argc, char** argv) {
     std::cout << "simvideo: " << config.cameras.size() << " camera(s), status to " << config.host
               << ":" << config.status_port << std::endl;
 
+    Mailboxes mailboxes;
+    for (const fpvsim::video::CameraSpec& camera : config.cameras) {
+      mailboxes[camera.name];
+    }
+    std::thread control([&config, &mailboxes] {
+      run_control(config.host, config.control_port, mailboxes);
+    });
+
     std::vector<std::thread> workers;
     workers.reserve(config.cameras.size());
     for (const fpvsim::video::CameraSpec& camera : config.cameras) {
-      workers.emplace_back([&camera, &status] { run_camera(camera, status); });
+      workers.emplace_back([&camera, &status, &mailboxes] {
+        run_camera(camera, status, mailboxes.at(camera.name));
+      });
     }
     for (std::thread& worker : workers) {
       worker.join();
     }
+    control.join();
   } catch (const std::exception& error) {
     std::cerr << "simvideo: " << error.what() << "\n";
     return 1;

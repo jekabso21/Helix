@@ -12,6 +12,7 @@ namespace fpvsim::video {
 struct VideoConfig {
   std::string host;
   std::uint16_t status_port;
+  std::uint16_t control_port;
   std::vector<CameraSpec> cameras;
 };
 

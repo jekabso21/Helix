@@ -27,6 +27,9 @@ class OutputBranch {
 
   void start();
   void stop();
+  // Turns an output off without touching the others, or brings it back and starts it again
+  void set_enabled(bool enabled);
+  [[nodiscard]] bool enabled() const { return output_.enabled; }
   // Takes one reference of the buffer; does nothing unless the branch is running
   void push(void* buffer);
   // Drains the bus and restarts a failed branch once its backoff has passed
@@ -68,6 +71,8 @@ class CameraRunner {
   void stop();
   void push_frame(std::span<const std::byte> pixels, std::int64_t pts_ns);
   void poll();
+  // Returns false when the camera has no output with that index
+  bool set_output_enabled(std::size_t index, bool enabled);
   void note_late_frame() { ++late_frames_; }
   [[nodiscard]] CameraStatus status();
   [[nodiscard]] const CameraSpec& camera() const { return camera_; }

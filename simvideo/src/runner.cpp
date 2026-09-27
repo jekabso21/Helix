@@ -101,6 +101,23 @@ void OutputBranch::stop() {
   }
 }
 
+void OutputBranch::set_enabled(bool enabled) {
+  if (enabled == output_.enabled) {
+    return;
+  }
+  output_.enabled = enabled;
+  if (!enabled) {
+    stop();
+    state_ = "disabled";
+    return;
+  }
+  // a fresh start, not a retry of whatever failed before it was turned off
+  last_error_.clear();
+  backoff_ = std::chrono::milliseconds(500);
+  state_ = "starting";
+  start();
+}
+
 void OutputBranch::fail(const std::string& message, std::chrono::steady_clock::time_point now) {
   last_error_ = message;
   state_ = "error";
@@ -253,6 +270,14 @@ void CameraRunner::poll() {
   for (auto& branch : branches_) {
     branch->poll(now);
   }
+}
+
+bool CameraRunner::set_output_enabled(std::size_t index, bool enabled) {
+  if (index >= branches_.size()) {
+    return false;
+  }
+  branches_[index]->set_enabled(enabled);
+  return true;
 }
 
 CameraStatus CameraRunner::status() {

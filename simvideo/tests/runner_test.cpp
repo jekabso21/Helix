@@ -29,6 +29,20 @@ video::CameraSpec camera(std::vector<video::OutputSpec> outputs) {
                            .outputs = std::move(outputs)};
 }
 
+// One file per frame, so a count is exact without waiting for a sink to flush
+std::filesystem::path temp_dir(const std::string& suffix) {
+  const std::filesystem::path dir = std::filesystem::temp_directory_path() /
+                                    ("fpvsim_video_" + std::to_string(::getpid()) + "_" + suffix);
+  std::filesystem::remove_all(dir);
+  std::filesystem::create_directories(dir);
+  return dir;
+}
+
+std::size_t file_count(const std::filesystem::path& dir) {
+  return static_cast<std::size_t>(
+      std::distance(std::filesystem::directory_iterator(dir), std::filesystem::directory_iterator{}));
+}
+
 std::filesystem::path temp_file(const std::string& suffix) {
   return std::filesystem::temp_directory_path() /
          ("fpvsim_video_" + std::to_string(::getpid()) + "_" + suffix + ".raw");
@@ -104,6 +118,37 @@ TEST(RunnerTest, DisabledOutputsNeverStart) {
     runner.stop();
   }
   EXPECT_FALSE(std::filesystem::exists(out));
+}
+
+TEST(RunnerTest, AnOutputCanBeTurnedOffAndBackOnWhileTheOthersRun) {
+  const std::filesystem::path first = temp_dir("toggle_a");
+  const std::filesystem::path second = temp_dir("toggle_b");
+  video::CameraRunner runner(camera({
+      {.pipeline = "multifilesink location=" + (first / "%05d.raw").string(), .enabled = true},
+      {.pipeline = "multifilesink location=" + (second / "%05d.raw").string(), .enabled = true},
+  }));
+  runner.start();
+  feed(runner, 3);
+  EXPECT_EQ(runner.status().outputs.at(0).state, "running");
+  EXPECT_GT(file_count(first), 0U);
+
+  ASSERT_TRUE(runner.set_output_enabled(0, false));
+  EXPECT_EQ(runner.status().outputs.at(0).state, "disabled");
+  EXPECT_EQ(runner.status().outputs.at(1).state, "running");
+  const std::size_t while_off = file_count(first);
+  const std::size_t others_before = file_count(second);
+  feed(runner, 5);
+  EXPECT_EQ(file_count(first), while_off) << "a disabled output takes no frames";
+  EXPECT_GT(file_count(second), others_before) << "the other output keeps running";
+
+  ASSERT_TRUE(runner.set_output_enabled(0, true));
+  EXPECT_EQ(runner.status().outputs.at(0).state, "running");
+  feed(runner, 5);
+  runner.stop();
+  EXPECT_GT(file_count(first), while_off) << "and it takes frames again";
+  EXPECT_FALSE(runner.set_output_enabled(7, true)) << "an index that is not there is refused";
+  std::filesystem::remove_all(first);
+  std::filesystem::remove_all(second);
 }
 
 TEST(RunnerTest, InputFpsAndLateFramesAreReported) {
