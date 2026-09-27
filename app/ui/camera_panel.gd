@@ -17,6 +17,8 @@ var mount_position_frd := FALLBACK_MOUNT_FRD
 var mount_q_frd_from_camera := Quaternion(Vector3(0, 1, 0), deg_to_rad(FALLBACK_UPTILT_DEG))
 
 var _publisher: Variant = null
+var _shown: ImageTexture = null
+var _shown_image: Image = null
 var _frame_index := 0
 var _next_publish_ns := 0
 var _published := 0
@@ -136,6 +138,9 @@ func _close_publisher() -> void:
 	if _publisher != null:
 		_publisher.close()
 		_publisher = null
+	_shown = null
+	_shown_image = null
+	_view.texture = _viewport.get_texture()
 
 
 func _exit_tree() -> void:
@@ -177,6 +182,7 @@ func _process(_delta: float) -> void:
 			]
 		if wants_publish:
 			_publish(pixels, state)
+			_show_published(pixels)
 	if _publisher != null:
 		status += "  ring: %d frames" % _published
 	elif _publish_error != "":
@@ -184,6 +190,17 @@ func _process(_delta: float) -> void:
 	_header.text = "%s %dx%d@%d  %s%s" % [
 		camera_name, camera_size.x, camera_size.y, roundi(camera_fps), time_text, status
 	]
+
+
+## The panel shows the bytes that went to the outputs, so what you see is what they receive
+func _show_published(pixels: PackedByteArray) -> void:
+	if _shown_image == null or _shown_image.get_width() != camera_size.x or _shown_image.get_height() != camera_size.y:
+		_shown_image = Image.create_from_data(camera_size.x, camera_size.y, false, Image.FORMAT_RGB8, pixels)
+		_shown = ImageTexture.create_from_image(_shown_image)
+		_view.texture = _shown
+		return
+	_shown_image.set_data(camera_size.x, camera_size.y, false, Image.FORMAT_RGB8, pixels)
+	_shown.update(_shown_image)
 
 
 ## Frames carry the sim time they represent and the camera pose that produced them
