@@ -16,10 +16,20 @@ const RIGHT_DOCK_FRACTION := 0.32
 
 
 func _ready() -> void:
+	var camera_panel := get_node_or_null("Margin/Layout/Body/Center/RightDock/CameraFeed")
+	if camera_panel != null:
+		$Margin/Layout/Body/Center/MainView.set_camera_source(camera_panel)
 	resized.connect(_layout_for_size)
 	_layout_for_size.call_deferred()
-	if OS.get_cmdline_user_args().has("--camera-only"):
+	var args := OS.get_cmdline_user_args()
+	if args.has("--camera-only"):
 		_toggle_camera_only.call_deferred()
+	# --view 1..6 picks a main view mode, the same numbers as the keys
+	var view_index := args.find("--view")
+	if view_index >= 0 and view_index + 1 < args.size():
+		var rig := get_node_or_null("Margin/Layout/Body/Center/MainView/SubViewport/World/CameraRig")
+		if rig != null:
+			rig.set_mode.call_deferred(int(args[view_index + 1]) - 1)
 
 
 ## Dock widths follow the window so nothing overflows on small or tiled windows
