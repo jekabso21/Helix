@@ -39,6 +39,7 @@ var _run_dir := ""
 @onready var _post: TextureRect = $PostViewport/Post
 @onready var _camera: Camera3D = $SubViewport/Camera3D
 @onready var _view: TextureRect = $View
+@onready var _outputs: VBoxContainer = $Outputs
 @onready var _raw_toggle: CheckButton = $OutputRow/RawTcp
 @onready var _command: LineEdit = $OutputRow/Command
 
@@ -54,6 +55,7 @@ func _ready() -> void:
 	_view.texture = _viewport.get_texture()
 	_camera.current = true
 	BackendClient.status.connect(_on_status)
+	BackendClient.video.connect(_on_video)
 	var args := OS.get_cmdline_user_args()
 	var port_index := args.find("--raw-port")
 	if port_index >= 0 and port_index + 1 < args.size():
@@ -89,6 +91,7 @@ func _on_status(data: Dictionary) -> void:
 	var running: bool = data.get("state", "") == "running" and run_dir != ""
 	if not running:
 		_close_publisher()
+		_clear_outputs()
 		_run_dir = ""
 		return
 	if run_dir == _run_dir:
@@ -116,6 +119,58 @@ func _load_camera(run_dir: String) -> void:
 	_load_mount(run_dir, camera_name)
 	_update_command()
 	_open_publisher()
+
+
+## simvideo reports every output twice a second; a failed one is named without hiding the others
+func _on_video(data: Dictionary) -> void:
+	if str(data.get("camera", "")) != camera_name:
+		return
+	var outputs: Array = data.get("outputs", [])
+	while _outputs.get_child_count() < outputs.size():
+		var label := Label.new()
+		label.clip_text = true
+		_outputs.add_child(label)
+	while _outputs.get_child_count() > outputs.size():
+		var extra := _outputs.get_child(_outputs.get_child_count() - 1)
+		_outputs.remove_child(extra)
+		extra.queue_free()
+	for i in outputs.size():
+		var output: Dictionary = outputs[i]
+		var label: Label = _outputs.get_child(i)
+		label.text = output_summary(output)
+		label.tooltip_text = str(output.get("pipeline", ""))
+		label.add_theme_color_override("font_color", output_colour(str(output.get("state", ""))))
+
+
+static func output_summary(output: Dictionary) -> String:
+	var text := "out %d  %s  %.1f fps" % [
+		int(output.get("index", 0)), str(output.get("state", "")), float(output.get("fps", 0.0))
+	]
+	var bitrate: Variant = output.get("bitrate_bps")
+	if bitrate != null:
+		text += "  %.1f Mbit/s" % (float(bitrate) * 1e-6)
+	var error := str(output.get("last_error", ""))
+	if error != "" and error != "<null>":
+		text += "  " + error
+	return text
+
+
+static func output_colour(state: String) -> Color:
+	match state:
+		"error":
+			return Color(1.0, 0.45, 0.4)
+		"starting", "restarting":
+			return Color(1.0, 0.85, 0.4)
+		"disabled":
+			return Color(0.6, 0.6, 0.6)
+		_:
+			return Color(0.8, 0.9, 0.8)
+
+
+func _clear_outputs() -> void:
+	for child in _outputs.get_children():
+		_outputs.remove_child(child)
+		child.queue_free()
 
 
 ## The mount comes from the compiled model, so moving the camera part moves the view

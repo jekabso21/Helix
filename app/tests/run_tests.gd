@@ -16,6 +16,7 @@ func _initialize() -> void:
 	_test_burn_in_counter()
 	_test_camera_panel_follows_the_config()
 	_test_camera_rotation_shift()
+	_test_output_status_lines()
 	print("%d checks, %d failures" % [checks, failures])
 	quit(1 if failures > 0 else 0)
 
@@ -253,3 +254,14 @@ func _test_camera_rotation_shift() -> void:
 	# twice the interval, twice the shift
 	var double: Vector2 = panel.rotation_uv_shift(Vector3(0, 0, 0.2), 2.0, half_hfov, aspect)
 	check(absf(double.x - 2.0 * yaw.x) < 1e-9, "the shift scales with the interval")
+
+
+## The per-output lines the camera panel shows from simvideo reports
+func _test_output_status_lines() -> void:
+	var panel := load("res://ui/camera_panel.gd")
+	var running := {"index": 0, "state": "running", "fps": 59.94, "bitrate_bps": 4000000.0, "last_error": null}
+	check(panel.output_summary(running) == "out 0  running  59.9 fps  4.0 Mbit/s", panel.output_summary(running))
+	var broken := {"index": 1, "state": "error", "fps": 0.0, "last_error": "could not link"}
+	check(panel.output_summary(broken) == "out 1  error  0.0 fps  could not link", panel.output_summary(broken))
+	check(panel.output_colour("error").r > panel.output_colour("running").r, "an error stands out")
+	check(panel.output_colour("disabled") != panel.output_colour("running"), "a disabled output differs")

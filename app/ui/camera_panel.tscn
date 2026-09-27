@@ -55,6 +55,9 @@ size_flags_vertical = 3
 expand_mode = 1
 stretch_mode = 5
 
+[node name="Outputs" type="VBoxContainer" parent="."]
+layout_mode = 2
+
 [node name="OutputRow" type="HBoxContainer" parent="."]
 layout_mode = 2
 
