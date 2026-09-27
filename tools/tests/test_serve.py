@@ -1,4 +1,6 @@
 import json
+import os
+import signal
 import socket
 import threading
 import time
@@ -171,7 +173,10 @@ def test_session_outlives_the_client_that_started_it() -> None:
         if uv
         else [sys.executable, "-m", "simtools.simctl.cli"]
     ) + ["serve", "--base-dir", str(REPO_ROOT), "--port", str(port)]
-    backend = subprocess.Popen(command, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
+    # its own process group: `uv run` spawns the real server as a child, so a kill must reach both
+    backend = subprocess.Popen(
+        command, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT, start_new_session=True
+    )
     try:
         deadline = time.monotonic() + 10.0
         while True:
@@ -201,4 +206,5 @@ def test_session_outlives_the_client_that_started_it() -> None:
         try:
             backend.wait(timeout=10.0)
         except subprocess.TimeoutExpired:
-            backend.kill()
+            os.killpg(backend.pid, signal.SIGKILL)
+            backend.wait(timeout=5.0)
