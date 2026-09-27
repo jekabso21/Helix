@@ -11,6 +11,13 @@ from simtools.config.resolver import (
     resolve_session,
     write_run_directory,
 )
+from simtools.latency import (
+    LatencyError,
+    check_frame_timestamps,
+    format_report,
+    format_timestamp_report,
+    measure_latency,
+)
 from simtools.modelc import compile_drone, export_glb, report, to_json
 from simtools.propfit import ThrustTableError, as_yaml, fit_prop, read_thrust_table
 from simtools.simctl.launcher import (
@@ -107,6 +114,47 @@ def propfit(
         typer.echo(str(error), err=True)
         raise typer.Exit(code=2) from error
     typer.echo(as_yaml(fit), nl=False)
+
+
+@app.command()
+def latency(
+    camera: Annotated[str, typer.Option("--camera", help="Camera name, or a path to its ring")] = (
+        "main_fpv"
+    ),
+    consumer: Annotated[
+        str, typer.Option("--consumer", help="GStreamer source fragment reading one output")
+    ] = "v4l2src device=/dev/video10",
+    frames: Annotated[int, typer.Option("--frames", help="Frames to time")] = 120,
+    timeout_s: Annotated[float, typer.Option("--timeout", help="Give up after this long")] = 30.0,
+) -> None:
+    """Time how long a published frame takes to reach a consumer of one of its outputs."""
+    try:
+        report = measure_latency(camera, consumer, frames=frames, timeout_s=timeout_s)
+    except LatencyError as error:
+        typer.echo(str(error), err=True)
+        raise typer.Exit(code=2) from error
+    typer.echo(format_report(report), nl=False)
+    if report.matched == 0:
+        raise typer.Exit(code=1)
+
+
+@app.command()
+def frame_timestamps(
+    camera: Annotated[str, typer.Option("--camera", help="Camera name, or a path to its ring")] = (
+        "main_fpv"
+    ),
+    port: Annotated[int, typer.Option("--port", help="TCP port of the simcore control API")] = 7700,
+    samples: Annotated[int, typer.Option("--samples", help="Frames to compare")] = 60,
+) -> None:
+    """Compare the sim time on published frames with the sim time the backend reports."""
+    try:
+        report = check_frame_timestamps(camera, port=port, samples=samples)
+    except LatencyError as error:
+        typer.echo(str(error), err=True)
+        raise typer.Exit(code=2) from error
+    typer.echo(format_timestamp_report(report), nl=False)
+    if not report.within_one_frame:
+        raise typer.Exit(code=1)
 
 
 @app.command()

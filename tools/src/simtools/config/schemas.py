@@ -197,6 +197,7 @@ class CameraConfig(Strict):
     rolling_shutter_readout_s: float = Field(default=0.0, ge=0.0)
     sensor_latency_s: float = Field(default=0.0, ge=0.0)
     noise: CameraNoiseConfig = Field(default_factory=CameraNoiseConfig)
+    burn_in_counter: bool = False  # draws the frame counter into the image for latency runs
     outputs: list[str] = Field(default_factory=list[str])
 
     @model_validator(mode="after")
