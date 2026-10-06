@@ -260,7 +260,7 @@ def resolve_session(session_path: Path, base_dir: Path) -> ResolvedSession:
 def resolve_cameras(
     cameras: list[CameraConfig], host: str, status_port: int, control_port: int
 ) -> dict[str, Any]:
-    """The document simvideo reads (docs/INTERFACES.md 5.1); the app uses the optical fields."""
+    """The document simvideo reads; the app uses the optical fields."""
     return {
         "schema_version": RESOLVED_SCHEMA_VERSION,
         "host": host,

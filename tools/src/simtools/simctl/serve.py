@@ -374,7 +374,7 @@ class Supervisor:
                     if frame.command == MspCommand.DISPLAYPORT and grid.apply(frame.payload):
                         self._publish("osd", grid.to_json())
 
-    # simvideo status over UDP (docs/INTERFACES.md section 8)
+    # simvideo status over UDP
 
     def get_video(self) -> Json:
         with self._lock:
