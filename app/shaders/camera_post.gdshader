@@ -26,7 +26,8 @@ vec2 distort(vec2 uv) {
     if (radius < 1e-6) {
         return uv;
     }
-    float theta = atan(radius * tan(half_hfov_rad));
+    // the right edge sits at 0.5 * aspect in these units and is where the angle is half the hfov
+    float theta = atan(radius / (0.5 * aspect) * tan(half_hfov_rad));
     float t2 = theta * theta;
     float scale = 1.0 + t2 * (distortion_k.x + t2 * (distortion_k.y
                 + t2 * (distortion_k.z + t2 * distortion_k.w)));

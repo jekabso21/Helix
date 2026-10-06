@@ -52,6 +52,9 @@ func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	BackendClient.osd.connect(set_canvas)
 	BackendClient.status.connect(_on_status)
+	# made while the running status is being delivered, an overlay would not hear it until the next one
+	if not BackendClient.last_status.is_empty():
+		_on_status(BackendClient.last_status)
 
 
 func _on_status(data: Dictionary) -> void:
@@ -67,17 +70,20 @@ func _load_font(run_dir: String) -> void:
 		return
 	_atlas_source = run_dir
 	var text := FileAccess.get_file_as_string(run_dir + "/resolved/session.json")
-	var document: Variant = JSON.parse_string(text) if text != "" else null
-	if not (document is Dictionary):
-		return
-	var betaflight: Dictionary = (document as Dictionary).get("betaflight", {})
-	var osd_block: Dictionary = betaflight.get("osd", {})
-	var path := str(osd_block.get("font", ""))
-	if path == "":
-		_atlas = OSD_FONT.new()
-		return
-	if not _atlas.load_path(path):
+	var path := font_path(JSON.parse_string(text) if text != "" else null)
+	_atlas = OSD_FONT.new()
+	if path != "" and not _atlas.load_path(path):
 		push_warning("OSD font: " + _atlas.error)
+
+
+## The resolved session writes null when no font is set
+static func font_path(session: Variant) -> String:
+	if not (session is Dictionary):
+		return ""
+	var betaflight: Variant = (session as Dictionary).get("betaflight")
+	var osd_block: Variant = betaflight.get("osd") if betaflight is Dictionary else null
+	var font: Variant = osd_block.get("font") if osd_block is Dictionary else null
+	return font if font is String else ""
 
 
 func clear() -> void:

@@ -50,6 +50,7 @@ var _shown_image: Image = null
 var _run_dir := ""
 var _world: World3D = null
 var _raw: RawVideoOut = null
+var _source: Node = null
 
 @export var world_view_path: NodePath
 
@@ -88,6 +89,19 @@ func use_world(world: World3D) -> void:
 		feed.viewport.world_3d = world
 
 
+## The pop-out window shows what another panel renders instead of rendering the cameras again:
+## a second set of feeds would also open a second publisher on every ring
+func mirror(source: Node) -> void:
+	_source = source
+	_free_feeds()
+	if _raw != null:
+		_raw.stop()
+		_raw = null
+	_selector.visible = false
+	_outputs.visible = false
+	$OutputRow.visible = false
+
+
 func _exit_tree() -> void:
 	if _raw != null:
 		_raw.stop()
@@ -118,8 +132,10 @@ func _make_feed(config: Dictionary) -> Feed:
 		feed.burn_in = bool(config.get("burn_in_counter", false))
 		var optics: Dictionary = config.get("optics", {})
 		feed.half_hfov_rad = float(optics.get("hfov_rad", deg_to_rad(FALLBACK_HFOV_DEG))) * 0.5
-		var k: Array = (optics.get("distortion", {}) as Dictionary).get("k", [0, 0, 0, 0])
-		feed.distortion_k = Vector4(k[0], k[1], k[2], k[3])
+		var distortion: Dictionary = optics.get("distortion", {})
+		if str(distortion.get("model", "none")) == "fisheye":
+			var k: Array = distortion.get("k", [0, 0, 0, 0])
+			feed.distortion_k = Vector4(k[0], k[1], k[2], k[3])
 		feed.rolling_shutter_s = float(optics.get("rolling_shutter_readout_s", 0.0))
 		feed.shutter_s = float((optics.get("exposure", {}) as Dictionary).get("shutter_s", 0.0))
 		feed.noise_base = float((optics.get("noise", {}) as Dictionary).get("base", 0.0))
@@ -206,6 +222,8 @@ func _update_command() -> void:
 
 
 func _on_status(data: Dictionary) -> void:
+	if _source != null:
+		return
 	var run_dir := str(data.get("run_dir", ""))
 	var running: bool = data.get("state", "") == "running" and run_dir != ""
 	if not running:
@@ -257,6 +275,8 @@ func _read_json(path: String) -> Variant:
 ## simvideo reports every output twice a second; a failed one is named without hiding the others,
 ## and the switch on each row turns that output off or on while the session runs
 func _on_video(data: Dictionary) -> void:
+	if _source != null:
+		return
 	var feed := selected_feed()
 	if feed == null or str(data.get("camera", "")) != feed.name:
 		return
@@ -367,6 +387,11 @@ func _on_raw_toggled(on: bool) -> void:
 
 
 func _process(_delta: float) -> void:
+	if _source != null:
+		if is_instance_valid(_source):
+			_view.texture = _source._view.texture
+			_header.text = _source._header.text
+		return
 	var state := SimLink.last_state
 	var time_text := "no state yet"
 	if state != null:

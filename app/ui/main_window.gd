@@ -90,5 +90,9 @@ func _toggle_camera_feed_window() -> void:
 	panel.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	_camera_feed_window.add_child(panel)
 	add_child(_camera_feed_window)
-	var main_viewport: SubViewport = $Margin/Layout/Body/Center/MainView/SubViewport
-	panel.use_world(main_viewport.world_3d)
+	var dock_panel := get_node_or_null("Margin/Layout/Body/Center/RightDock/CameraFeed")
+	if dock_panel != null:
+		panel.mirror(dock_panel)
+	else:
+		var main_viewport: SubViewport = $Margin/Layout/Body/Center/MainView/SubViewport
+		panel.use_world(main_viewport.world_3d)

@@ -19,6 +19,8 @@ func _initialize() -> void:
 	_test_output_status_lines()
 	_test_osd_font()
 	await _test_camera_selector()
+	await _test_camera_popout_mirrors_the_dock()
+	await _test_osd_overlay_takes_the_running_session()
 	print("%d checks, %d failures" % [checks, failures])
 	quit(1 if failures > 0 else 0)
 
@@ -290,6 +292,13 @@ func _test_camera_selector() -> void:
 	check(panel._feeds[1].osd == false, "a camera can turn the OSD off")
 	check(panel._feeds[1].viewport.get_child_count() == 1, "and then gets no OSD overlay node")
 	check(panel._feeds[0].viewport.get_child_count() == 2, "while the main camera keeps one")
+	panel._build_feeds([
+		{"name": "plain", "width": 64, "height": 36, "fps": 30.0, "optics": {"hfov_rad": 1.0, "distortion": {"model": "none", "k": [0.1, 0.2, 0.3, 0.4]}}},
+		{"name": "fisheye", "width": 64, "height": 36, "fps": 30.0, "optics": {"hfov_rad": 1.0, "distortion": {"model": "fisheye", "k": [0.1, 0.2, 0.3, 0.4]}}},
+	])
+	check(panel._feeds[0].distortion_k == Vector4.ZERO, "a camera without a distortion model is a plain pinhole")
+	check(panel._feeds[1].distortion_k == Vector4(0.1, 0.2, 0.3, 0.4), "a fisheye camera keeps its coefficients")
+	panel._build_feeds(configs)
 	panel._on_video({"camera": "rear_fpv", "outputs": [
 		{"index": 0, "state": "running", "fps": 30.0},
 		{"index": 1, "state": "disabled", "fps": 0.0},
@@ -341,3 +350,59 @@ func _test_osd_font() -> void:
 	check(atlas.load_image(strip) and atlas.glyph_count == 256, "a PNG atlas of 256 stacked glyphs")
 	check(atlas.glyph_size == Vector2i(24, 36), "glyph size from the strip, got %s" % atlas.glyph_size)
 	check(not script.new().load_image(Image.create(8, 7, false, Image.FORMAT_RGBA8)), "a strip that is not a whole number of glyphs is refused")
+
+
+## After an await the root can still be setting up children, so nodes join it deferred
+func _add_to_root(node: Node) -> void:
+	root.add_child.call_deferred(node)
+	await node.ready
+
+
+## The pop-out shows what the docked panel renders: a second renderer would also open a second
+## publisher for every camera, and two writers on one ring fight over it
+func _test_camera_popout_mirrors_the_dock() -> void:
+	var dock: Node = load("res://ui/camera_panel.tscn").instantiate()
+	var popout: Node = load("res://ui/camera_panel.tscn").instantiate()
+	await _add_to_root(dock)
+	await _add_to_root(popout)
+	dock._build_feeds([
+		{"name": "main_fpv", "width": 320, "height": 180, "fps": 60.0, "optics": {"hfov_rad": deg_to_rad(120.0)}},
+		{"name": "rear_fpv", "width": 160, "height": 90, "fps": 30.0, "osd": false, "optics": {"hfov_rad": deg_to_rad(90.0)}},
+	])
+	popout.mirror(dock)
+	check(popout._feeds.is_empty(), "the pop-out renders no camera of its own")
+	popout._on_status({"state": "running", "run_dir": ProjectSettings.globalize_path("user://camera_cfg_test")})
+	check(popout._feeds.is_empty(), "a running session gives the pop-out no feeds and no publishers")
+	popout._process(0.0)
+	check(popout._view.texture == dock._view.texture, "the pop-out shows the docked panel's picture")
+	dock._on_camera_selected(1)
+	popout._process(0.0)
+	check(popout._view.texture == dock._view.texture, "and follows the camera picked in the dock")
+	check(popout._header.text == dock._header.text, "with the same header line")
+	popout.queue_free()
+	dock.queue_free()
+
+
+## An overlay created while the session is already running (the feeds are rebuilt while the
+## running status is being delivered) still loads the session's OSD font
+func _test_osd_overlay_takes_the_running_session() -> void:
+	var script: Variant = load("res://ui/osd_overlay.gd")
+	check(script.font_path({"betaflight": {"osd": {"font": null}}}) == "", "a session without a font names no font")
+	check(script.font_path({"betaflight": {"osd": {}}}) == "", "nor does one without the key")
+	check(script.font_path({"betaflight": {"osd": {"font": "/x/f.mcm"}}}) == "/x/f.mcm", "a configured font is passed on")
+	check(script.font_path(null) == "", "an unreadable session names no font")
+
+	var dir := "user://osd_session_test"
+	DirAccess.make_dir_recursive_absolute(dir + "/resolved")
+	var font_file := ProjectSettings.globalize_path(dir + "/font.png")
+	Image.create(24, 36 * 256, false, Image.FORMAT_RGBA8).save_png(font_file)
+	_write_json(dir + "/resolved/session.json", {"betaflight": {"osd": {"font": font_file}}})
+	var backend: Node = root.get_node("BackendClient")
+	var previous: Dictionary = backend.last_status
+	backend.last_status = {"state": "running", "run_dir": ProjectSettings.globalize_path(dir)}
+	var overlay := Control.new()
+	overlay.set_script(script)
+	await _add_to_root(overlay)
+	check(overlay._atlas.is_loaded(), "an overlay made during a running session uses its OSD font")
+	backend.last_status = previous
+	overlay.queue_free()
