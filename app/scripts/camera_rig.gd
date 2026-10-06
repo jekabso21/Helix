@@ -1,5 +1,5 @@
 extends Node3D
-## Main view cameras: 1 chase, 2 side, 3 orbit, 4 free, 5 top, 6 FPV (the drone camera)
+## Main view cameras: 1 chase, 2 side, 3 orbit, 4 free, 5 top; FPV follows the drone camera
 
 enum Mode { CHASE, SIDE, ORBIT, FREE, TOP, FPV }
 
@@ -53,7 +53,6 @@ func _unhandled_input(event: InputEvent) -> void:
 			KEY_3: set_mode(Mode.ORBIT)
 			KEY_4: set_mode(Mode.FREE)
 			KEY_5: set_mode(Mode.TOP)
-			KEY_6: set_mode(Mode.FPV)
 		return
 	var button := event as InputEventMouseButton
 	if button != null:

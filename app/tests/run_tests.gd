@@ -10,7 +10,6 @@ func _initialize() -> void:
 	_test_render_state_golden()
 	_test_drone_glb()
 	_test_plot_series()
-	_test_plots_panel()
 	_test_osd_overlay()
 	_test_frame_publisher()
 	_test_burn_in_counter()
@@ -19,6 +18,10 @@ func _initialize() -> void:
 	_test_output_status_lines()
 	_test_osd_font()
 	await _test_camera_selector()
+	await _test_telemetry_dock()
+	_test_window_scaling()
+	_test_input_profile_detection()
+	_test_controller_does_not_drive_the_ui()
 	await _test_camera_popout_mirrors_the_dock()
 	await _test_osd_overlay_takes_the_running_session()
 	print("%d checks, %d failures" % [checks, failures])
@@ -114,25 +117,33 @@ func _test_plot_series() -> void:
 	check(s.size() == 1 and s.latest() == 1.0, "time going backwards clears the window")
 
 
-func _test_plots_panel() -> void:
-	var panel: Variant = load("res://ui/plots_panel.gd").new()
-	panel._ready()
+## The telemetry dock keeps 10 s of body rates and battery voltage for its sparklines
+func _test_telemetry_dock() -> void:
+	var dock: Node = load("res://ui/telemetry_panel.tscn").instantiate()
+	await _add_to_root(dock)
+	var panel: Node = dock.get_node("Pad/Sections")
 	var sample := {
-		"sim": {"sim_time_ns": 2_000_000_000, "paused": false},
-		"motors": [{"command": 0.2}, {"command": 0.3}, {"command": 0.4}, {"command": 0.5}],
-		"flight": {"rates_frd_radps": [0.1, -0.2, 0.3]},
-		"battery": {"voltage_v": 24.5, "current_a": 6.0},
+		"sim": {"sim_time_ns": 2_000_000_000, "paused": false, "mode": "realtime", "overruns": 0, "crashed": false},
+		"motors": [{"command": 0.2, "rpm": 100.0}, {"command": 0.3, "rpm": 100.0}, {"command": 0.4, "rpm": 100.0}, {"command": 0.5, "rpm": 100.0, "current_a": 3.0}],
+		"flight": {"rates_frd_radps": [0.1, -0.2, 0.3], "altitude_agl_m": 5.0, "ground_speed_mps": 1.0, "climb_mps": 0.0, "roll_rad": 0.0, "pitch_rad": 0.0, "heading_rad": 0.0},
+		"battery": {"voltage_v": 24.5, "current_a": 6.0, "consumed_mah": 12.0, "soc": 0.9},
 	}
 	panel._on_telemetry(sample)
 	sample["sim"]["sim_time_ns"] = 2_100_000_000
 	panel._on_telemetry(sample)
-	check(panel._motors[3].size() == 2 and absf(panel._motors[3].latest() - 0.5) < 1e-6, "motor series filled")
 	check(absf(panel._rates[1].latest() - rad_to_deg(-0.2)) < 1e-6, "rates stored in deg/s")
-	check(panel._battery[0].latest() == 24.5 and panel._battery[1].latest() == 6.0, "battery series filled")
+	check(panel._voltage.size() == 2 and panel._voltage.latest() == 24.5, "voltage history filled")
+	check(panel._battery_tiles["amps"].text == "6.0 A", "battery tiles, got %s" % panel._battery_tiles["amps"].text)
+	check(panel._motor_rows.size() == 4 and panel._motor_rows[3].text.contains("50 %"), "one row per motor")
 	sample["sim"]["paused"] = true
 	panel._on_telemetry(sample)
-	check(panel._motors[0].size() == 2, "paused telemetry is not appended")
-	panel.free()
+	check(panel._voltage.size() == 2, "paused telemetry is not appended")
+	panel._render_fc({"armed": false, "arming_disable_flags": ["RXLOSS", "MSP"], "pid_cycle_time_us": 125})
+	await process_frame
+	check(panel._flags.get_child_count() == 2 and panel._loop_value.text == "125 µs", "arming flags as tags and the PID loop time")
+	panel._render_fc({"armed": true, "arming_disable_flags": [], "pid_cycle_time_us": 125})
+	check(panel._state_value.text == "Armed" and panel._state_tile.theme_type_variation == "TileArmed", "an armed FC stands out")
+	dock.queue_free()
 
 
 func _test_osd_overlay() -> void:
@@ -406,3 +417,60 @@ func _test_osd_overlay_takes_the_running_session() -> void:
 	check(overlay._atlas.is_loaded(), "an overlay made during a running session uses its OSD font")
 	backend.last_status = previous
 	overlay.queue_free()
+
+
+## Docks fold at fixed UI widths and the UI scale walks a fixed list of steps
+func _test_window_scaling() -> void:
+	var window: Variant = load("res://ui/main_window.gd")
+	check(window.fold_level(1600.0) == 0 and window.fold_level(1000.0) == 1 and window.fold_level(800.0) == 2, "docks fold as the window narrows")
+	check(window.next_ui_scale(1.0, 1) == 1.1 and window.next_ui_scale(1.0, -1) == 0.9, "one step up and down from 100 %")
+	check(window.next_ui_scale(1.17, 1) == 1.25 and window.next_ui_scale(1.17, -1) == 1.1, "an odd scale snaps to the neighbouring steps")
+	check(window.next_ui_scale(2.0, 1) == 2.0 and window.next_ui_scale(0.75, -1) == 0.75, "the ends hold")
+	check(window.next_ui_scale(1.5, 0) == 1.0, "reset goes back to 100 %")
+	var toolbar: Variant = load("res://ui/toolbar.gd")
+	check(toolbar.session_label({"name": "ci_hover", "input": "altitude_hold", "duration_s": 36.0}) == "ci_hover  ·  altitude_hold  ·  36 s", "session label")
+	check(toolbar.session_label({"name": "dev_gamepad", "input": "gamepad", "duration_s": null}).ends_with("∞"), "an open-ended session")
+	check(toolbar.session_label({"name": "dev_gamepad", "input": "gamepad", "duration_s": 0.0}).ends_with("∞"), "duration 0 runs until stopped")
+	var sessions := [{"name": "ci_hover"}, {"name": "dev_gamepad"}, {"name": "dev_multicam"}, {"name": "broken", "error": "x"}]
+	check(toolbar.preferred_session(sessions, "") == 1, "the gamepad dev session is picked by default")
+	check(toolbar.preferred_session(sessions, "dev_multicam") == 2, "the last started session wins")
+	check(toolbar.preferred_session(sessions, "broken") == 1 and toolbar.preferred_session(sessions, "gone") == 1, "an invalid or missing last session falls back")
+	check(toolbar.preferred_session([{"name": "a"}], "") == 0 and toolbar.preferred_session([], "") == -1, "otherwise the first")
+	check(toolbar.clock_text(70_250_000_000) == "t 01:10.25", "clock, got %s" % toolbar.clock_text(70_250_000_000))
+
+
+## A connected controller is matched to a saved profile by its device name
+func _test_input_profile_detection() -> void:
+	var panel: Variant = load("res://ui/input_panel.gd")
+	var boxer := {"name": "radiomaster_boxer", "device_name_contains": "Radiomaster Boxer", "mapping": {"channels": {}}}
+	var xbox := {"name": "xbox", "device_name_contains": "Xbox", "mapping": {"channels": {}}}
+	var broken := {"name": "broken", "device_name_contains": "Xbox", "error": "bad"}
+	var devices := ["keyd virtual pointer", "OpenTX Radiomaster Boxer Joystick"]
+	var found: Dictionary = panel.detect_profile(devices, [xbox, boxer], "")
+	check(found.get("profile") == "radiomaster_boxer" and found.get("device") == devices[1], "the boxer is found by name, case-insensitive: %s" % found)
+	check(panel.detect_profile(["Xbox Wireless Controller"] + devices, [xbox, boxer], "radiomaster_boxer")["profile"] == "radiomaster_boxer", "the default profile wins when its device is there")
+	check(panel.detect_profile(["Xbox Wireless Controller"], [broken, xbox], "")["profile"] == "xbox", "an invalid profile is skipped")
+	check(panel.detect_profile(["keyd virtual pointer"], [xbox, boxer], "").is_empty(), "nothing matches, nothing is picked")
+	check(panel.detect_profile(devices, [{"name": "any", "device_name_contains": "", "mapping": {}}], "").is_empty(), "a profile without a device name never matches everything")
+	var parsed: Dictionary = JSON.parse_string('{"device_name_contains": "Boxer", "channels": {"aux1": {"button": 0, "inverted": false}, "aux2": {"axis": 4, "inverted": true, "deadband": 0.0}}}')
+	var clean: Dictionary = panel.clean_mapping(parsed)
+	check(typeof(clean["channels"]["aux1"]["button"]) == TYPE_INT and typeof(clean["channels"]["aux2"]["axis"]) == TYPE_INT, "indices are saved as whole numbers")
+	check(JSON.stringify(clean).contains('"axis":4,') and clean["channels"]["aux2"]["inverted"] == true, "and nothing else changes: %s" % JSON.stringify(clean))
+	check(typeof(parsed["channels"]["aux2"]["axis"]) == TYPE_FLOAT, "the original is left alone")
+	check(panel.profile_slug("OpenTX Radiomaster Boxer Joystick") == "opentx_radiomaster_boxer_joystick", "profile name from the device")
+	check(panel.profile_slug("  Xbox (Wireless) #2 ") == "xbox_wireless_2" and panel.profile_slug("!!") == "controller", "odd device names still give a file name")
+
+
+## The radio is read by simcore; in the app its sticks must not move focus or press buttons
+func _test_controller_does_not_drive_the_ui() -> void:
+	var has_joypad := func() -> bool:
+		for action: StringName in InputMap.get_actions():
+			for event in InputMap.action_get_events(action):
+				if event is InputEventJoypadButton or event is InputEventJoypadMotion:
+					return true
+		return false
+	check(has_joypad.call(), "Godot maps the gamepad to UI navigation out of the box")
+	load("res://ui/main_window.gd").drop_joypad_ui_events()
+	check(not has_joypad.call(), "no action reacts to a gamepad any more")
+	var keys := InputMap.action_get_events("ui_accept").filter(func(e: InputEvent) -> bool: return e is InputEventKey)
+	check(not keys.is_empty(), "keyboard navigation is kept")

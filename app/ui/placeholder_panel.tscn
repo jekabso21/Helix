@@ -2,14 +2,23 @@
 
 [ext_resource type="Script" path="res://ui/placeholder_panel.gd" id="1"]
 
-[node name="PlaceholderPanel" type="PanelContainer"]
-custom_minimum_size = Vector2(160, 80)
+[node name="PlaceholderPanel" type="MarginContainer"]
 size_flags_horizontal = 3
 size_flags_vertical = 3
+theme_type_variation = &"Pad"
 script = ExtResource("1")
 
-[node name="Label" type="Label" parent="."]
+[node name="Box" type="VBoxContainer" parent="."]
 layout_mode = 2
-text = "Panel"
-horizontal_alignment = 1
-vertical_alignment = 1
+size_flags_vertical = 0
+theme_type_variation = &"Section"
+
+[node name="Title" type="Label" parent="Box"]
+layout_mode = 2
+theme_type_variation = &"Kicker"
+
+[node name="Body" type="Label" parent="Box"]
+custom_minimum_size = Vector2(120, 0)
+layout_mode = 2
+theme_type_variation = &"Muted"
+autowrap_mode = 3

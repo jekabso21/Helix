@@ -2,47 +2,58 @@
 
 [ext_resource type="Script" path="res://ui/drone_panel.gd" id="1"]
 
-[node name="DroneTab" type="ScrollContainer"]
+[node name="Drone" type="ScrollContainer"]
 size_flags_horizontal = 3
 size_flags_vertical = 3
 horizontal_scroll_mode = 0
 
-[node name="DronePanel" type="VBoxContainer" parent="."]
+[node name="Pad" type="MarginContainer" parent="."]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_type_variation = &"Pad"
+
+[node name="DronePanel" type="VBoxContainer" parent="Pad"]
 layout_mode = 2
 size_flags_horizontal = 3
 size_flags_vertical = 3
+theme_type_variation = &"Section"
 script = ExtResource("1")
 
-[node name="Summary" type="RichTextLabel" parent="DronePanel"]
+[node name="Summary" type="RichTextLabel" parent="Pad/DronePanel"]
 layout_mode = 2
 custom_minimum_size = Vector2(0, 150)
 bbcode_enabled = true
 fit_content = true
 
-[node name="Parts" type="GridContainer" parent="DronePanel"]
+[node name="Parts" type="GridContainer" parent="Pad/DronePanel"]
 layout_mode = 2
 columns = 5
 
-[node name="Actions" type="HBoxContainer" parent="DronePanel"]
+[node name="Actions" type="HBoxContainer" parent="Pad/DronePanel"]
+theme_type_variation = &"Gap6"
 layout_mode = 2
 
-[node name="Preview" type="Button" parent="DronePanel/Actions"]
+[node name="Preview" type="Button" parent="Pad/DronePanel/Actions"]
 layout_mode = 2
+theme_type_variation = &"SmallButton"
 text = "Preview"
 
-[node name="Apply" type="Button" parent="DronePanel/Actions"]
+[node name="Apply" type="Button" parent="Pad/DronePanel/Actions"]
 layout_mode = 2
+theme_type_variation = &"PrimaryButton"
 text = "Apply"
 
-[node name="Revert" type="Button" parent="DronePanel/Actions"]
+[node name="Revert" type="Button" parent="Pad/DronePanel/Actions"]
 layout_mode = 2
+theme_type_variation = &"SmallButton"
 text = "Revert"
 
-[node name="Overlays" type="CheckBox" parent="DronePanel/Actions"]
+[node name="Overlays" type="CheckBox" parent="Pad/DronePanel/Actions"]
 layout_mode = 2
 button_pressed = true
 text = "overlays"
 
-[node name="Message" type="Label" parent="DronePanel"]
+[node name="Message" type="Label" parent="Pad/DronePanel"]
 layout_mode = 2
+theme_type_variation = &"Hint"
 autowrap_mode = 3

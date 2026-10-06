@@ -1,10 +1,9 @@
 class_name PlaceholderPanel
-extends PanelContainer
+extends MarginContainer
 
-@export var title: String = "Panel"
-
-@onready var _label: Label = $Label
+@export var body: String = ""
 
 
 func _ready() -> void:
-	_label.text = title
+	$Box/Title.text = str(name).to_upper()
+	$Box/Body.text = body

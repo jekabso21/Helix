@@ -1,7 +1,8 @@
-[gd_scene load_steps=6 format=3]
+[gd_scene load_steps=8 format=3]
 
 [ext_resource type="Script" path="res://ui/main_view.gd" id="1"]
 [ext_resource type="PackedScene" path="res://scenes/world.tscn" id="2"]
+[ext_resource type="Script" path="res://ui/widgets/frame_corners.gd" id="3"]
 
 [sub_resource type="ProceduralSkyMaterial" id="sky_mat"]
 sky_top_color = Color(0.3, 0.5, 0.85, 1)
@@ -16,23 +17,70 @@ background_mode = 2
 sky = SubResource("sky")
 ambient_light_source = 3
 
-[node name="MainView" type="SubViewportContainer"]
+[node name="MainView" type="VBoxContainer"]
 size_flags_horizontal = 3
 size_flags_vertical = 3
-stretch = true
+theme_type_variation = &"Section"
 script = ExtResource("1")
 
-[node name="SubViewport" type="SubViewport" parent="."]
+[node name="ViewBar" type="HBoxContainer" parent="."]
+layout_mode = 2
+theme_type_variation = &"Gap10"
+
+[node name="Segment" type="PanelContainer" parent="ViewBar"]
+layout_mode = 2
+theme_type_variation = &"Segment"
+
+[node name="Tabs" type="HBoxContainer" parent="ViewBar/Segment"]
+layout_mode = 2
+theme_type_variation = &"Strip"
+
+[node name="Meta" type="Label" parent="ViewBar"]
+custom_minimum_size = Vector2(40, 0)
+layout_mode = 2
+theme_type_variation = &"MonoMuted"
+clip_text = true
+text_overrun_behavior = 3
+
+[node name="Keys" type="Label" parent="ViewBar"]
+custom_minimum_size = Vector2(40, 0)
+layout_mode = 2
+size_flags_horizontal = 3
+horizontal_alignment = 2
+text_overrun_behavior = 3
+theme_type_variation = &"Hint"
+text = "keys 1–5 camera modes · 6 camera feed · right-drag orbit · wheel zoom · V swap view"
+clip_text = true
+
+[node name="Frame" type="PanelContainer" parent="."]
+layout_mode = 2
+size_flags_vertical = 3
+theme_type_variation = &"ViewFrame"
+
+[node name="Stage" type="Control" parent="Frame"]
+clip_contents = true
+layout_mode = 2
+
+[node name="Viewport" type="SubViewportContainer" parent="Frame/Stage"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+stretch = true
+
+[node name="SubViewport" type="SubViewport" parent="Frame/Stage/Viewport"]
 handle_input_locally = false
 size = Vector2i(2, 2)
 render_target_update_mode = 4
 
-[node name="World" parent="SubViewport" instance=ExtResource("2")]
+[node name="World" parent="Frame/Stage/Viewport/SubViewport" instance=ExtResource("2")]
 
-[node name="Environment" parent="SubViewport/World" index="1"]
+[node name="Environment" parent="Frame/Stage/Viewport/SubViewport/World" index="1"]
 environment = SubResource("env")
 
-[node name="FeedBackdrop" type="ColorRect" parent="."]
+[node name="FeedBackdrop" type="ColorRect" parent="Frame/Stage"]
 visible = false
 layout_mode = 1
 anchors_preset = 15
@@ -40,33 +88,141 @@ anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
-color = Color(0, 0, 0, 1)
 mouse_filter = 2
+color = Color(0, 0, 0, 1)
 
-[node name="Feed" type="TextureRect" parent="."]
+[node name="Feed" type="TextureRect" parent="Frame/Stage"]
 visible = false
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
-offset_left = 0.0
-offset_top = 0.0
-offset_right = 0.0
-offset_bottom = 0.0
 grow_horizontal = 2
 grow_vertical = 2
+mouse_filter = 2
 expand_mode = 1
 stretch_mode = 5
-mouse_filter = 2
 
-[node name="Caption" type="Label" parent="."]
+[node name="Hud" type="MarginContainer" parent="Frame/Stage"]
 layout_mode = 1
 anchors_preset = 10
 anchor_right = 1.0
-offset_left = 8.0
-offset_top = 6.0
-offset_right = -8.0
-offset_bottom = 30.0
 grow_horizontal = 2
-clip_text = true
-text = "Chase view"
+mouse_filter = 2
+theme_type_variation = &"ChipRow"
+
+[node name="Row" type="HBoxContainer" parent="Frame/Stage/Hud"]
+layout_mode = 2
+mouse_filter = 2
+theme_type_variation = &"Gap8"
+
+[node name="View" type="PanelContainer" parent="Frame/Stage/Hud/Row"]
+layout_mode = 2
+mouse_filter = 2
+theme_type_variation = &"Chip"
+
+[node name="Text" type="Label" parent="Frame/Stage/Hud/Row/View"]
+layout_mode = 2
+theme_type_variation = &"ChipText"
+text = "CHASE"
+
+[node name="Armed" type="PanelContainer" parent="Frame/Stage/Hud/Row"]
+layout_mode = 2
+mouse_filter = 2
+theme_type_variation = &"Chip"
+
+[node name="Text" type="Label" parent="Frame/Stage/Hud/Row/Armed"]
+layout_mode = 2
+theme_type_variation = &"ChipText"
+text = "NO STATE"
+
+[node name="Spacer" type="Control" parent="Frame/Stage/Hud/Row"]
+layout_mode = 2
+size_flags_horizontal = 3
+mouse_filter = 2
+
+[node name="Alt" type="PanelContainer" parent="Frame/Stage/Hud/Row"]
+layout_mode = 2
+mouse_filter = 2
+theme_type_variation = &"Chip"
+
+[node name="Text" type="Label" parent="Frame/Stage/Hud/Row/Alt"]
+layout_mode = 2
+theme_type_variation = &"ChipText"
+text = "ALT — m"
+
+[node name="Gap" type="Control" parent="Frame/Stage/Hud/Row"]
+custom_minimum_size = Vector2(4, 0)
+layout_mode = 2
+mouse_filter = 2
+
+[node name="Speed" type="PanelContainer" parent="Frame/Stage/Hud/Row"]
+layout_mode = 2
+mouse_filter = 2
+theme_type_variation = &"Chip"
+
+[node name="Text" type="Label" parent="Frame/Stage/Hud/Row/Speed"]
+layout_mode = 2
+theme_type_variation = &"ChipText"
+text = "SPD — m/s"
+
+[node name="Pip" type="Button" parent="Frame/Stage"]
+custom_minimum_size = Vector2(224, 126)
+layout_mode = 1
+anchors_preset = 3
+anchor_left = 1.0
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = -236.0
+offset_top = -138.0
+offset_right = -12.0
+offset_bottom = -12.0
+grow_horizontal = 0
+grow_vertical = 0
+focus_mode = 0
+tooltip_text = "Swap views (V)"
+theme_type_variation = &"PipButton"
+
+[node name="Picture" type="TextureRect" parent="Frame/Stage/Pip"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 1.0
+offset_top = 1.0
+offset_right = -1.0
+offset_bottom = -1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+expand_mode = 1
+stretch_mode = 6
+
+[node name="Name" type="PanelContainer" parent="Frame/Stage/Pip"]
+layout_mode = 1
+anchors_preset = 2
+anchor_top = 1.0
+anchor_bottom = 1.0
+offset_left = 6.0
+offset_top = -26.0
+offset_right = 46.0
+offset_bottom = -5.0
+grow_vertical = 0
+mouse_filter = 2
+theme_type_variation = &"Chip"
+
+[node name="Text" type="Label" parent="Frame/Stage/Pip/Name"]
+layout_mode = 2
+theme_type_variation = &"ChipText"
+text = "FPV"
+
+[node name="Corners" type="Control" parent="Frame"]
+layout_mode = 2
+mouse_filter = 2
+script = ExtResource("3")
+
+[node name="Motors" type="GridContainer" parent="."]
+layout_mode = 2
+theme_type_variation = &"Motors"
+columns = 4

@@ -5,20 +5,25 @@
 [node name="CameraPanel" type="VBoxContainer"]
 size_flags_horizontal = 3
 size_flags_vertical = 3
+theme_type_variation = &"Section"
 script = ExtResource("1")
 
 [node name="HeaderRow" type="HBoxContainer" parent="."]
 layout_mode = 2
+theme_type_variation = &"Gap8"
 
 [node name="Header" type="Label" parent="HeaderRow"]
 layout_mode = 2
 size_flags_horizontal = 3
+theme_type_variation = &"MonoMuted"
 clip_text = true
 text = "Camera feed"
 
 [node name="Camera" type="OptionButton" parent="HeaderRow"]
+fit_to_longest_item = false
 layout_mode = 2
 tooltip_text = "Which camera this panel shows; every configured camera is rendered and published"
+theme_type_variation = &"SmallOption"
 
 [node name="Feeds" type="Node" parent="."]
 
@@ -30,16 +35,55 @@ stretch_mode = 5
 
 [node name="Outputs" type="VBoxContainer" parent="."]
 layout_mode = 2
+theme_type_variation = &"Tight"
 
-[node name="OutputRow" type="HBoxContainer" parent="."]
+[node name="RawRow" type="PanelContainer" parent="."]
 layout_mode = 2
+theme_type_variation = &"Row"
 
-[node name="RawTcp" type="CheckButton" parent="OutputRow"]
+[node name="Row" type="HBoxContainer" parent="RawRow"]
 layout_mode = 2
-text = "raw TCP"
-tooltip_text = "Serve RGB frames on TCP 5700; run the command on the right to view them"
+theme_type_variation = &"Gap6"
 
-[node name="Command" type="LineEdit" parent="OutputRow"]
+[node name="Label" type="Label" parent="RawRow/Row"]
+layout_mode = 2
+text = "Raw TCP output"
+
+[node name="Address" type="Label" parent="RawRow/Row"]
+custom_minimum_size = Vector2(20, 0)
+layout_mode = 2
+clip_text = true
+size_flags_horizontal = 3
+theme_type_variation = &"MonoMuted"
+text = "127.0.0.1:5700"
+
+[node name="RawTcp" type="CheckBox" parent="RawRow/Row"]
+layout_mode = 2
+tooltip_text = "Serve RGB frames on TCP; run the command below to view them"
+text = "on"
+
+[node name="CommandHint" type="Label" parent="."]
+layout_mode = 2
+theme_type_variation = &"Hint"
+autowrap_mode = 3
+text = "Nothing listens on the port until Raw TCP output is on. Switch it on, then run:"
+
+[node name="CommandRow" type="HBoxContainer" parent="."]
+layout_mode = 2
+theme_type_variation = &"Gap6"
+
+[node name="Code" type="PanelContainer" parent="CommandRow"]
 layout_mode = 2
 size_flags_horizontal = 3
-editable = false
+theme_type_variation = &"CodeBox"
+
+[node name="Command" type="Label" parent="CommandRow/Code"]
+custom_minimum_size = Vector2(80, 0)
+layout_mode = 2
+theme_type_variation = &"MonoSoft"
+autowrap_mode = 1
+
+[node name="Copy" type="Button" parent="CommandRow"]
+layout_mode = 2
+theme_type_variation = &"SmallButton"
+text = "Copy"

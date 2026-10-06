@@ -10,6 +10,9 @@ const FALLBACK_SIZE := Vector2i(640, 360)
 const FALLBACK_HFOV_DEG := 110.0
 const RAW_PORT := 5700
 
+signal feeds_changed()
+signal selection_changed(index: int)
+
 
 ## One camera: the two render stages, the ring it publishes to and the optics it applies
 class Feed:
@@ -53,14 +56,19 @@ var _raw: RawVideoOut = null
 var _source: Node = null
 
 @export var world_view_path: NodePath
+## In the dock the panel lists cameras and outputs; the picture itself is shown by the main view
+@export var show_picture := true
 
 @onready var _header: Label = $HeaderRow/Header
 @onready var _selector: OptionButton = $HeaderRow/Camera
 @onready var _feed_root: Node = $Feeds
 @onready var _view: TextureRect = $View
 @onready var _outputs: VBoxContainer = $Outputs
-@onready var _raw_toggle: CheckButton = $OutputRow/RawTcp
-@onready var _command: LineEdit = $OutputRow/Command
+@onready var _raw_toggle: CheckBox = $RawRow/Row/RawTcp
+@onready var _command_hint: Label = $CommandHint
+@onready var _raw_address: Label = $RawRow/Row/Address
+@onready var _command: Label = $CommandRow/Code/Command
+@onready var _copy: Button = $CommandRow/Copy
 
 
 func _ready() -> void:
@@ -76,6 +84,8 @@ func _ready() -> void:
 	if port_index >= 0 and port_index + 1 < args.size():
 		_raw_port = int(args[port_index + 1])
 	_raw_toggle.toggled.connect(_on_raw_toggled)
+	_copy.pressed.connect(_on_copy)
+	_view.visible = show_picture
 	_selector.item_selected.connect(_on_camera_selected)
 	if args.has("--raw-video"):
 		_raw_toggle.button_pressed = true
@@ -99,7 +109,10 @@ func mirror(source: Node) -> void:
 		_raw = null
 	_selector.visible = false
 	_outputs.visible = false
-	$OutputRow.visible = false
+	$RawRow.visible = false
+	$CommandRow.visible = false
+	_command_hint.visible = false
+	_view.visible = true
 
 
 func _exit_tree() -> void:
@@ -121,6 +134,7 @@ func _build_feeds(configs: Array) -> void:
 	_selector.visible = _feeds.size() > 1
 	_show_feed_texture()
 	_update_command()
+	feeds_changed.emit()
 
 
 func _make_feed(config: Dictionary) -> Feed:
@@ -197,6 +211,22 @@ func selected_feed() -> Feed:
 	return _feeds[_selected] if _selected < _feeds.size() else null
 
 
+func selected_index() -> int:
+	return _selected
+
+
+func camera_names() -> PackedStringArray:
+	var names := PackedStringArray()
+	for feed in _feeds:
+		names.append(feed.name)
+	return names
+
+
+func select_camera(index: int) -> void:
+	_selector.select(clampi(index, 0, _feeds.size() - 1))
+	_on_camera_selected(index)
+
+
 func _on_camera_selected(index: int) -> void:
 	_selected = clampi(index, 0, _feeds.size() - 1)
 	_shown = null
@@ -204,6 +234,7 @@ func _on_camera_selected(index: int) -> void:
 	_show_feed_texture()
 	_update_command()
 	_clear_outputs()
+	selection_changed.emit(_selected)
 
 
 ## Without published bytes to show, the panel falls back to the feed's own post-processed texture
@@ -218,6 +249,7 @@ func _update_command() -> void:
 	if feed == null:
 		return
 	# sync=false: frames are shown as they arrive; with the clock, every dropped frame would add lag
+	_render_raw_state()
 	_command.text = "gst-launch-1.0 tcpclientsrc host=127.0.0.1 port=%d ! rawvideoparse format=rgb width=%d height=%d framerate=%d/1 ! videoconvert ! autovideosink sync=false" % [_raw_port, feed.size.x, feed.size.y, roundi(feed.fps)]
 
 
@@ -374,16 +406,35 @@ func _close_publisher(feed: Feed) -> void:
 		feed.publisher = null
 
 
+func _on_copy() -> void:
+	DisplayServer.clipboard_set(_command.text)
+	_copy.text = "Copied"
+	get_tree().create_timer(1.2).timeout.connect(func() -> void: _copy.text = "Copy")
+
+
 func _on_raw_toggled(on: bool) -> void:
+	var failure := ""
 	if on:
 		_raw = RawVideoOut.new()
 		if not _raw.start(_raw_port):
-			_header.text = _raw.error
+			failure = _raw.error
 			_raw = null
 			_raw_toggle.set_pressed_no_signal(false)
 	elif _raw != null:
 		_raw.stop()
 		_raw = null
+	_render_raw_state(failure)
+
+
+## Whether anything listens is spelled out, since the command only works while it does
+func _render_raw_state(failure: String = "") -> void:
+	if failure != "":
+		_raw_address.text = failure
+	elif _raw == null:
+		_raw_address.text = "off · port %d" % _raw_port
+	else:
+		_raw_address.text = "serving 127.0.0.1:%d · %d frames" % [_raw_port, _raw.frames_written]
+	_command_hint.visible = _raw == null and _source == null
 
 
 func _process(_delta: float) -> void:
@@ -408,6 +459,7 @@ func _process(_delta: float) -> void:
 		var pixels := feed.pixels()
 		if is_selected and _raw != null:
 			_raw.push(pixels)
+			_render_raw_state()
 			status = "  raw: %d written, %d dropped%s" % [
 				_raw.frames_written, _raw.frames_dropped, "  " + _raw.error if _raw.error != "" else ""
 			]
