@@ -4,6 +4,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <span>
 #include <string>
 #include <vector>
@@ -30,8 +31,9 @@ class OutputBranch {
   // Turns an output off without touching the others, or brings it back and starts it again
   void set_enabled(bool enabled);
   [[nodiscard]] bool enabled() const { return output_.enabled; }
-  // Takes one reference of the buffer; does nothing unless the branch is running
-  void push(void* buffer);
+  // Pushes a shallow copy of the buffer stamped on this pipeline's clock; does nothing unless the
+  // branch is running
+  void push(void* buffer, std::int64_t pts_ns);
   // Drains the bus and restarts a failed branch once its backoff has passed
   void poll(std::chrono::steady_clock::time_point now);
   // Running time of this pipeline, or -1 when it is not playing; used to place the first PTS
@@ -57,6 +59,7 @@ class OutputBranch {
   std::chrono::steady_clock::time_point retry_at_{};
   std::chrono::milliseconds backoff_{500};
   double fps_ = 0.0;
+  std::optional<std::int64_t> pts_offset_ns_;  // set on the first frame after each start
 };
 
 // Owns the branches of one camera and turns frames into buffers exactly once
@@ -83,7 +86,6 @@ class CameraRunner {
  private:
   CameraSpec camera_;
   std::vector<std::unique_ptr<OutputBranch>> branches_;
-  std::int64_t pts_offset_ns_ = -1;  // set on the first frame, see push_frame
   std::uint64_t frames_ = 0;
   std::uint64_t frames_at_window_ = 0;
   std::uint64_t late_frames_ = 0;

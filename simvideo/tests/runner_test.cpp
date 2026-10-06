@@ -39,8 +39,8 @@ std::filesystem::path temp_dir(const std::string& suffix) {
 }
 
 std::size_t file_count(const std::filesystem::path& dir) {
-  return static_cast<std::size_t>(
-      std::distance(std::filesystem::directory_iterator(dir), std::filesystem::directory_iterator{}));
+  return static_cast<std::size_t>(std::distance(std::filesystem::directory_iterator(dir),
+                                                std::filesystem::directory_iterator{}));
 }
 
 std::filesystem::path temp_file(const std::string& suffix) {
@@ -250,4 +250,35 @@ TEST(RunnerTest, FirstPtsIsPlacedAtRunningTimeAndDeltasAreKept) {
   EXPECT_GE(stamps.front(), 200 * GST_MSECOND) << "the first PTS was not moved to running time";
   EXPECT_EQ(stamps[1] - stamps[0], static_cast<GstClockTime>(kPeriodNs));
   EXPECT_EQ(stamps[2] - stamps[1], static_cast<GstClockTime>(kPeriodNs));
+}
+
+TEST(RunnerTest, AClockSyncingOutputDeliversAgainAfterARestart) {
+  video::CameraRunner runner(camera(
+      {{.pipeline = "appsink name=out sync=true max-buffers=8 drop=true", .enabled = true}}));
+  runner.start();
+  const std::vector<std::byte> pixels(static_cast<std::size_t>(kWidth) * kHeight * 3,
+                                      std::byte{0x30});
+  constexpr std::int64_t kPeriodNs = 16'666'667;
+  std::int64_t sim_ns = 0;
+  for (int i = 0; i < 90; ++i) {
+    runner.push_frame(pixels, sim_ns);
+    sim_ns += kPeriodNs;
+    std::this_thread::sleep_for(std::chrono::nanoseconds(kPeriodNs));
+  }
+
+  ASSERT_TRUE(runner.set_output_enabled(0, false));
+  ASSERT_TRUE(runner.set_output_enabled(0, true));
+  GstElement* pipeline = nullptr;
+  GstElement* sink = nullptr;
+  ASSERT_TRUE(video::find_appsink_for_test(runner, 0, reinterpret_cast<void**>(&pipeline),
+                                           reinterpret_cast<void**>(&sink)));
+  runner.push_frame(pixels, sim_ns);
+  // a PTS still placed on the old pipeline's clock would hold this frame for 1.5 s
+  GstSample* sample = gst_app_sink_try_pull_sample(GST_APP_SINK(sink), 500 * GST_MSECOND);
+  EXPECT_NE(sample, nullptr) << "the restarted output held its first frame";
+  if (sample != nullptr) {
+    gst_sample_unref(sample);
+  }
+  gst_object_unref(sink);
+  runner.stop();
 }
