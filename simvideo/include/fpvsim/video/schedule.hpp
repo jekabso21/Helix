@@ -25,10 +25,26 @@ constexpr std::int64_t release_wall_ns(std::int64_t sim_time_ns, std::int64_t fi
          latency_ns(sensor_latency_s);
 }
 
+constexpr std::int64_t frame_period_ns(double fps) {
+  return fps > 0.0 ? static_cast<std::int64_t>(static_cast<double>(kNanosPerSecond) / fps) : 0;
+}
+
+struct Anchor {
+  std::int64_t first_sim_ns;
+  std::int64_t first_wall_ns;
+};
+
+// Ties the timeline to a frame so that it gets next_pts_ns and is released now plus the latency.
+// The first frame takes PTS 0; after a publisher restart the PTS carries on from the last frame.
+constexpr Anchor anchor_at(std::int64_t sim_time_ns, std::int64_t now_wall_ns,
+                           std::int64_t next_pts_ns) {
+  return Anchor{.first_sim_ns = sim_time_ns - next_pts_ns,
+                .first_wall_ns = now_wall_ns - next_pts_ns};
+}
+
 // A frame is late when it could only be released after the next one was already due
 constexpr bool is_late(std::int64_t release_ns, std::int64_t now_ns, double fps) {
-  const auto period = fps > 0.0 ? static_cast<std::int64_t>(kNanosPerSecond / fps) : 0;
-  return now_ns > release_ns + period;
+  return now_ns > release_ns + frame_period_ns(fps);
 }
 
 }  // namespace fpvsim::video

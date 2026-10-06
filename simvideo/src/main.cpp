@@ -11,6 +11,7 @@
 #include <iostream>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <thread>
 #include <utility>
 #include <vector>
@@ -22,6 +23,7 @@
 
 #include <fpvsim/proto/frame_ring.hpp>
 #include <fpvsim/video/config.hpp>
+#include <fpvsim/video/control.hpp>
 #include <fpvsim/video/runner.hpp>
 #include <fpvsim/video/schedule.hpp>
 #include <fpvsim/video/status.hpp>
@@ -38,7 +40,7 @@ std::int64_t steady_ns() {
       .count();
 }
 
-// Minimal UDP sender for the status datagrams of docs/INTERFACES.md section 8
+// Minimal UDP sender for the status datagrams
 class StatusSocket {
  public:
   StatusSocket(const std::string& host, std::uint16_t port)
@@ -86,24 +88,15 @@ class ControlMailbox {
 
 using Mailboxes = std::map<std::string, ControlMailbox>;
 
-// {"version": 1, "camera": "main_fpv", "index": 0, "enabled": false}
 void handle_control_datagram(const char* data, std::size_t size, Mailboxes& mailboxes) {
-  const nlohmann::json message = nlohmann::json::parse(data, data + size, nullptr, false);
-  if (message.is_discarded() || !message.is_object()) {
+  const auto command = fpvsim::video::parse_control(std::string_view(data, size));
+  if (!command) {
     return;
   }
-  if (!message.contains("version") || message["version"] != 1) {
-    return;
+  const auto found = mailboxes.find(command->camera);
+  if (found != mailboxes.end()) {
+    found->second.post(command->index, command->enabled);
   }
-  if (!message.contains("camera") || !message.contains("index") || !message.contains("enabled")) {
-    return;
-  }
-  const auto found = mailboxes.find(message["camera"].get<std::string>());
-  if (found == mailboxes.end() || !message["index"].is_number_unsigned() ||
-      !message["enabled"].is_boolean()) {
-    return;
-  }
-  found->second.post(message["index"].get<std::size_t>(), message["enabled"].get<bool>());
 }
 
 // Listens for output commands until the process stops
@@ -144,18 +137,32 @@ void run_camera(const fpvsim::video::CameraSpec& spec, const StatusSocket& statu
   std::vector<std::byte> pixels;
   std::vector<std::byte> pending_pixels;
   std::uint64_t last_seq = 0;
-  std::int64_t first_sim_ns = 0;
-  std::int64_t first_wall_ns = 0;
+  fpvsim::video::Anchor anchor{};
   bool anchored = false;
+  bool reanchor = false;
+  std::int64_t last_pts = 0;
   bool have_pending = false;
   std::int64_t pending_pts = 0;
   std::int64_t pending_release = 0;
   auto next_status = std::chrono::steady_clock::now();
   auto next_open_attempt = std::chrono::steady_clock::now();
+  auto next_replaced_check = std::chrono::steady_clock::now();
 
   while (!g_stop.load(std::memory_order_relaxed)) {
     const auto now = std::chrono::steady_clock::now();
     bool did_work = false;
+
+    // A publisher that closed cleanly unlinked its ring and the next one creates a new object,
+    // so the mapped one would never change again
+    if (reader && now >= next_replaced_check) {
+      next_replaced_check = now + 500ms;
+      if (reader->replaced()) {
+        reader.reset();
+        last_seq = 0;
+        reanchor = true;
+        next_open_attempt = now;
+      }
+    }
 
     if (!reader) {
       if (now >= next_open_attempt) {
@@ -174,15 +181,19 @@ void run_camera(const fpvsim::video::CameraSpec& spec, const StatusSocket& statu
       fpvsim::proto::FrameMeta meta{};
       const std::uint64_t seq = reader->read_latest(last_seq, meta, pixels);
       if (seq != 0) {
-        last_seq = seq;
-        if (!anchored) {
-          first_sim_ns = meta.sim_time_ns;
-          first_wall_ns = steady_ns();
+        // a lower sequence is a publisher that restarted in the same ring
+        if (!anchored || reanchor || seq < last_seq) {
+          const std::int64_t next_pts =
+              anchored ? last_pts + fpvsim::video::frame_period_ns(spec.fps) : 0;
+          anchor = fpvsim::video::anchor_at(meta.sim_time_ns, steady_ns(), next_pts);
           anchored = true;
+          reanchor = false;
         }
-        pending_pts = fpvsim::video::buffer_pts_ns(meta.sim_time_ns, first_sim_ns);
-        pending_release = fpvsim::video::release_wall_ns(meta.sim_time_ns, first_sim_ns,
-                                                         first_wall_ns, spec.sensor_latency_s);
+        last_seq = seq;
+        pending_pts = fpvsim::video::buffer_pts_ns(meta.sim_time_ns, anchor.first_sim_ns);
+        last_pts = pending_pts;
+        pending_release = fpvsim::video::release_wall_ns(
+            meta.sim_time_ns, anchor.first_sim_ns, anchor.first_wall_ns, spec.sensor_latency_s);
         pending_pixels.swap(pixels);
         have_pending = true;
         did_work = true;
