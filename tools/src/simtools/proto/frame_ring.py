@@ -45,7 +45,7 @@ def remove_stale_rings(shm_dir: Path = SHM_DIR) -> list[Path]:
     for path in sorted(shm_dir.glob(f"{SHM_PREFIX}*")):
         try:
             with path.open("rb") as ring:
-                # a live publisher holds a shared lock for as long as it runs
+                # a live publisher holds an exclusive lock for as long as it runs
                 fcntl.flock(ring, fcntl.LOCK_EX | fcntl.LOCK_NB)
                 path.unlink()
         except OSError:
@@ -55,7 +55,7 @@ def remove_stale_rings(shm_dir: Path = SHM_DIR) -> list[Path]:
 
 
 class FrameRingReader:
-    """Reads the newest complete frame out of a publisher's ring (docs/INTERFACES.md section 4)."""
+    """Reads the newest complete frame out of a publisher's ring."""
 
     def __init__(self, camera: str) -> None:
         self.path = ring_path(camera)
@@ -102,12 +102,17 @@ class FrameRingReader:
             if seq == 0 or seq == after_seq:
                 return None
             offset = HEADER_SIZE + self.slot_size_bytes * ((seq - 1) % self.slot_count)
+            # the writer stores seq_begin first and seq_end last, so the reader checks the other
+            # way round: a finished slot first, then that no new write began during the copy
+            end = struct.unpack_from("<Q", self._map, offset + self.slot_size_bytes - 8)[0]
+            if end != seq:
+                continue
             values = SLOT_META_STRUCT.unpack_from(self._map, offset)
             pixels = bytes(
                 self._map[offset + SLOT_HEADER_SIZE : offset + SLOT_HEADER_SIZE + self.frame_bytes]
             )
-            end = struct.unpack_from("<Q", self._map, offset + self.slot_size_bytes - 8)[0]
-            if values[0] == seq and end == seq:
+            begin = struct.unpack_from("<Q", self._map, offset)[0]
+            if begin == seq:
                 return RingFrame(
                     seq=seq,
                     sim_time_ns=values[1],

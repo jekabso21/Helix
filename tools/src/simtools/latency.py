@@ -23,13 +23,23 @@ def burn_in_pattern(frame_index: int) -> str:
     return f"10{bits}"
 
 
+def gray8_stride(width: int) -> int:
+    """GStreamer pads every GRAY8 row to a multiple of four bytes."""
+    return (width + 3) // 4 * 4
+
+
 def decode_burn_in(
-    frame: bytes, width: int, height: int, cell_px: int = BURN_IN_CELL_PX
+    frame: bytes,
+    width: int,
+    height: int,
+    cell_px: int = BURN_IN_CELL_PX,
+    stride: int | None = None,
 ) -> int | None:
     """Reads the counter back out of a greyscale frame, or None when the marker is missing."""
-    if height < cell_px or width < BURN_IN_CELLS * cell_px or len(frame) < width * height:
+    stride = width if stride is None else stride
+    if height < cell_px or width < BURN_IN_CELLS * cell_px or len(frame) < stride * height:
         return None
-    row = (cell_px // 2) * width
+    row = (cell_px // 2) * stride
     centres = [frame[row + cell * cell_px + cell_px // 2] for cell in range(BURN_IN_CELLS)]
     bits = "".join("1" if value >= 128 else "0" for value in centres)
     if bits[:2] != "10":
@@ -56,7 +66,8 @@ def capture_frames(
     consumer: str, width: int, height: int, frames: int, timeout_s: float
 ) -> list[CapturedFrame]:
     """Runs the consumer pipeline and timestamps every complete frame it hands over."""
-    frame_bytes = width * height
+    stride = gray8_stride(width)
+    frame_bytes = stride * height
     command = consumer_command(consumer, width, height)
     try:
         process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
@@ -84,7 +95,9 @@ def capture_frames(
                 frame = bytes(pending[:frame_bytes])
                 del pending[:frame_bytes]
                 captured.append(
-                    CapturedFrame(time.monotonic(), decode_burn_in(frame, width, height))
+                    CapturedFrame(
+                        time.monotonic(), decode_burn_in(frame, width, height, stride=stride)
+                    )
                 )
     finally:
         process.terminate()
@@ -299,8 +312,15 @@ class TimestampReport:
 
     @property
     def within_one_frame(self) -> bool:
-        """Never ahead of the state, and at most a period plus the round trip behind it."""
-        return bool(self.behind_ms) and -1e-6 <= self.max_ms <= self.budget_ms
+        """Never newer than the state read after it, and at most a period plus the round trip
+        behind the state read before it."""
+        if not self.behind_ms or len(self.api_window_ms) != len(self.behind_ms):
+            return False
+        never_ahead = all(
+            behind >= -window - 1e-6
+            for behind, window in zip(self.behind_ms, self.api_window_ms, strict=True)
+        )
+        return never_ahead and self.max_ms <= self.budget_ms
 
 
 def check_frame_timestamps(

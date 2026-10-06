@@ -13,6 +13,7 @@ from simtools.latency import (
     decode_burn_in,
     format_report,
     format_timestamp_report,
+    gray8_stride,
 )
 from simtools.proto.frame_ring import (
     HEADER_SIZE,
@@ -31,13 +32,13 @@ def grey_frame(width: int = WIDTH, height: int = HEIGHT) -> bytearray:
     return bytearray(b"\x40" * (width * height))
 
 
-def stamp(frame: bytearray, frame_index: int, width: int = WIDTH) -> bytearray:
+def stamp(frame: bytearray, frame_index: int, width: int = WIDTH, stride: int | None = None) -> bytearray:
     """The painter the publisher runs in C++, written out again so the decoder can be tested."""
     pattern = burn_in_pattern(frame_index)
     for cell, bit in enumerate(pattern):
         value = 0xFF if bit == "1" else 0x00
         for row in range(BURN_IN_CELL_PX):
-            start = row * width + cell * BURN_IN_CELL_PX
+            start = row * (stride or width) + cell * BURN_IN_CELL_PX
             frame[start : start + BURN_IN_CELL_PX] = bytes([value]) * BURN_IN_CELL_PX
     return frame
 
@@ -62,6 +63,20 @@ def test_decode_rejects_a_frame_too_small_for_the_counter():
     narrow = BURN_IN_CELLS * BURN_IN_CELL_PX - 16
     frame = bytes(stamp(grey_frame(narrow, HEIGHT), 5, narrow))
     assert decode_burn_in(frame, narrow, HEIGHT) is None
+
+
+def test_gray8_rows_are_padded_to_four_bytes_as_gstreamer_lays_them_out():
+    assert gray8_stride(1280) == 1280
+    assert gray8_stride(854) == 856
+    assert gray8_stride(853) == 856
+
+
+def test_decode_reads_a_frame_with_padded_rows():
+    width = WIDTH + 2
+    stride = gray8_stride(width)
+    assert stride != width
+    frame = stamp(bytearray(b"\x40" * (stride * HEIGHT)), 1234, width, stride)
+    assert decode_burn_in(bytes(frame), width, HEIGHT, stride=stride) == 1234
 
 
 def test_consumer_command_asks_for_grey_frames_at_the_camera_size():
@@ -113,6 +128,37 @@ def test_reader_follows_a_publisher_that_restarted(tmp_path):
         assert frame is not None and frame.seq == 1
 
 
+class _OverwrittenDuringCopy(bytearray):
+    """A ring whose writer starts on the newest slot while the reader copies its pixels."""
+
+    def __init__(self, blob, slot_offset, slot_size):
+        super().__init__(blob)
+        self.slot_offset = slot_offset
+        self.slot_size = slot_size
+        self.overwritten = False
+
+    def __getitem__(self, key):
+        if isinstance(key, slice) and not self.overwritten:
+            self.overwritten = True
+            seq = struct.unpack_from("<Q", self, self.slot_offset)[0]
+            # the writer stores seq_begin first and seq_end only once it has finished
+            struct.pack_into("<Q", self, self.slot_offset, seq + 3)
+            start = self.slot_offset + SLOT_HEADER_SIZE
+            self[start : start + 16] = b"\xee" * 16
+        return super().__getitem__(key)
+
+    def close(self):
+        pass
+
+
+def test_reader_rejects_a_slot_the_writer_overwrites_during_the_copy(tmp_path):
+    path = build_ring(tmp_path / "ring", [(1000, 1, 0x11)])
+    with FrameRingReader(str(path)) as reader:
+        reader._map.close()
+        reader._map = _OverwrittenDuringCopy(path.read_bytes(), HEADER_SIZE, reader.slot_size_bytes)
+        assert reader.read_latest(retries=0) is None
+
+
 def test_reader_rejects_a_file_that_is_not_a_ring(tmp_path):
     path = tmp_path / "junk"
     path.write_bytes(b"\x00" * 256)
@@ -150,7 +196,7 @@ def test_report_percentiles_and_text():
 
 def test_timestamp_report_allows_a_frame_up_to_a_period_behind():
     good = TimestampReport(
-        camera="main_fpv", fps_nominal=60.0, behind_ms=[-5.0, 8.0, 15.0], api_window_ms=[1.0, 2.0]
+        camera="main_fpv", fps_nominal=60.0, behind_ms=[-0.5, 8.0, 15.0], api_window_ms=[1.0, 2.0, 2.0]
     )
     assert good.frame_period_ms == pytest.approx(16.667, abs=0.01)
     assert good.max_ms == 15.0
@@ -160,3 +206,16 @@ def test_timestamp_report_allows_a_frame_up_to_a_period_behind():
     )
     assert not late.within_one_frame
     assert "OUTSIDE" in format_timestamp_report(late)
+
+
+def test_timestamp_report_rejects_a_frame_ahead_of_the_state_read_after_it():
+    # a frame may be newer than the state read before it, never newer than the one read after it
+    edge = TimestampReport(
+        camera="main_fpv", fps_nominal=60.0, behind_ms=[-1.5, 8.0], api_window_ms=[2.0, 2.0]
+    )
+    assert edge.within_one_frame
+    ahead = TimestampReport(
+        camera="main_fpv", fps_nominal=60.0, behind_ms=[-30.0, 8.0], api_window_ms=[2.0, 2.0]
+    )
+    assert not ahead.within_one_frame
+    assert "OUTSIDE" in format_timestamp_report(ahead)
