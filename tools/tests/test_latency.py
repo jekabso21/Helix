@@ -32,7 +32,9 @@ def grey_frame(width: int = WIDTH, height: int = HEIGHT) -> bytearray:
     return bytearray(b"\x40" * (width * height))
 
 
-def stamp(frame: bytearray, frame_index: int, width: int = WIDTH, stride: int | None = None) -> bytearray:
+def stamp(
+    frame: bytearray, frame_index: int, width: int = WIDTH, stride: int | None = None
+) -> bytearray:
     """The painter the publisher runs in C++, written out again so the decoder can be tested."""
     pattern = burn_in_pattern(frame_index)
     for cell, bit in enumerate(pattern):
@@ -196,7 +198,10 @@ def test_report_percentiles_and_text():
 
 def test_timestamp_report_allows_a_frame_up_to_a_period_behind():
     good = TimestampReport(
-        camera="main_fpv", fps_nominal=60.0, behind_ms=[-0.5, 8.0, 15.0], api_window_ms=[1.0, 2.0, 2.0]
+        camera="main_fpv",
+        fps_nominal=60.0,
+        behind_ms=[-0.5, 8.0, 15.0],
+        api_window_ms=[1.0, 2.0, 2.0],
     )
     assert good.frame_period_ms == pytest.approx(16.667, abs=0.01)
     assert good.max_ms == 15.0

@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+import yaml
 
 from simtools.simctl.serve import Server, Supervisor, free_port
 
@@ -88,10 +89,21 @@ def test_input_mappings_are_listed_and_saved(server: Server, tmp_path: Path) -> 
     assert {"radiomaster_boxer", "default"} <= names
     boxer = next(m for m in listed if m["name"] == "radiomaster_boxer")
     assert boxer["mapping"]["channels"]["throttle"]["axis"] == 0
+    # the default entry names the profile it extends, so a client can save edits into that one
+    default = next(m for m in listed if m["name"] == "default")
+    assert boxer["profile"] == "radiomaster_boxer"
+    assert default["profile"] == "radiomaster_boxer"
     bad = client.request(
         "save_input_mapping", {"name": "x", "mapping": {"channels": {"gear": {"axis": 1}}}}
     )
     assert bad["error"]["code"] == "invalid_state"
+    client.close()
+
+
+def test_input_devices_are_listed_without_a_session(server: Server) -> None:
+    client = LineClient(server.server_address[1])
+    devices = client.request("list_input_devices")["result"]["devices"]
+    assert isinstance(devices, list) and all(isinstance(d, str) for d in devices)
     client.close()
 
 
@@ -318,3 +330,15 @@ def test_set_output_enabled_sends_a_datagram_to_simvideo(server: Server) -> None
         supervisor._resolved = None
         control.close()
         client.close()
+
+
+def test_a_saved_mapping_keeps_whole_number_indices(tmp_path: Path) -> None:
+    # a client that read the mapping back from JSON sends 4.0 for axis 4
+    mapping = {
+        "device_name_contains": "Boxer",
+        "channels": {"aux2": {"axis": 4.0, "inverted": True, "deadband": 0.0}},
+    }
+    Supervisor(tmp_path).save_input_mapping("pad", mapping, False)
+    saved = yaml.safe_load((tmp_path / "configs/input/pad.yaml").read_text())
+    assert saved["channels"]["aux2"] == {"axis": 4, "inverted": True, "deadband": 0.0}
+    assert isinstance(saved["channels"]["aux2"]["axis"], int)

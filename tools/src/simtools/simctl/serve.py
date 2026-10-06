@@ -20,6 +20,7 @@ from simtools.config.resolver import (
     write_run_directory,
 )
 from simtools.config.schemas import InputMappingConfig
+from simtools.input_devices import joystick_names
 from simtools.modelc import compile_drone, export_glb, to_json
 from simtools.modelc.overrides import OverrideError, apply_overrides, summary
 from simtools.msp import MspCommand, MspError, parse_status_ex
@@ -96,6 +97,7 @@ class Supervisor:
             entry: Json = {"name": path.stem, "path": str(path.relative_to(self.base_dir))}
             try:
                 mapping = InputMappingConfig.model_validate(load_yaml(path))
+                entry["profile"] = mapping.name
                 entry["device_name_contains"] = mapping.device.name_contains
                 entry["mapping"] = {
                     "device_name_contains": mapping.device.name_contains,
@@ -122,9 +124,14 @@ class Supervisor:
             "arm_channel": mapping.get("arm_channel", "aux1"),
         }
         try:
-            InputMappingConfig.model_validate(document)
+            validated = InputMappingConfig.model_validate(document)
         except ValidationError as error:
             raise LaunchError(f"invalid mapping: {error}") from error
+        # written from the validated model, so 4.0 from a JSON client is saved as 4
+        document["channels"] = {
+            channel: source.model_dump(exclude_none=True)
+            for channel, source in validated.channels.items()
+        }
         directory = self.base_dir / "configs/input"
         directory.mkdir(parents=True, exist_ok=True)
         path = directory / f"{name}.yaml"
@@ -582,6 +589,8 @@ class Handler(socketserver.StreamRequestHandler):
                     str(params.get("process", "simcore")), int(params.get("lines", 50))
                 )
                 return self._ok(request_id, {"lines": lines}), None
+            if method == "list_input_devices":
+                return self._ok(request_id, {"devices": joystick_names()}), None
             if method == "list_input_mappings":
                 return self._ok(request_id, {"mappings": supervisor.list_input_mappings()}), None
             if method == "save_input_mapping":

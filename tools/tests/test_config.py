@@ -118,8 +118,12 @@ def test_gamepad_session_resolves_the_mapping_by_channel_name() -> None:
     mapping = resolved.session["input"]["mapping"]
     assert mapping["device_name_contains"] == "Radiomaster Boxer"
     assert mapping["arm_channel"] == "aux1"
-    assert mapping["channels"]["throttle"] == {"axis": 0, "inverted": False, "deadband": 0.0}
-    assert mapping["channels"]["aux1"] == {"button": 0, "inverted": False, "deadband": 0.0}
+    # the profile is the user's and the app rewrites it, so compare against the file itself
+    profile = yaml.safe_load((REPO_ROOT / "configs/input/radiomaster_boxer.yaml").read_text())
+    for name, source in profile["channels"].items():
+        expected = {"inverted": False, "deadband": 0.0, **source}
+        assert mapping["channels"][name] == expected
+    assert set(mapping["channels"]) == set(profile["channels"])
     assert "altitude_hold" not in resolved.session["input"]
     assert resolved.session["duration_s"] == 0
 
