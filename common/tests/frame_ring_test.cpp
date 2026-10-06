@@ -5,6 +5,7 @@
 
 #include <atomic>
 #include <cstring>
+#include <optional>
 #include <string>
 #include <thread>
 #include <vector>
@@ -225,4 +226,35 @@ TEST(FrameRingTest, ALiveWriterHoldsItsRingAndAKilledOneLeavesItUnheld) {
   ASSERT_EQ(::waitpid(child, &status, 0), child);
   EXPECT_TRUE(ring_unlocked(camera)) << "the dead writer's ring is not recognisable as stale";
   ::shm_unlink(proto::ring_path(camera).c_str());
+}
+
+// Two writers on one ring would reset it under each other and interleave their sequences
+TEST(FrameRingTest, ASecondWriterOnALiveRingIsRefused) {
+  const std::string camera = unique_name("second");
+  {
+    proto::FrameRingWriter first(camera, tiny_spec());
+    first.write(meta_for(7), pattern(first.frame_bytes(), std::byte{0x07}));
+    EXPECT_THROW(proto::FrameRingWriter(camera, tiny_spec()), std::runtime_error);
+    proto::FrameRingReader reader(camera);
+    proto::FrameMeta meta{};
+    std::vector<std::byte> pixels(reader.frame_bytes());
+    EXPECT_EQ(reader.read_latest(0, meta, pixels), 1U) << "the refused writer reset the ring";
+    EXPECT_EQ(meta.frame_index, 7U);
+  }
+  EXPECT_NO_THROW(proto::FrameRingWriter(camera, tiny_spec()));
+}
+
+// A writer that closes cleanly unlinks its ring, so the next one creates a new object. A reader
+// still mapping the old one would wait forever unless it can tell that it has been replaced.
+TEST(FrameRingTest, ReaderNoticesItsRingWasReplaced) {
+  const std::string camera = unique_name("replaced");
+  std::optional<proto::FrameRingWriter> writer(std::in_place, camera, tiny_spec());
+  proto::FrameRingReader reader(camera);
+  EXPECT_FALSE(reader.replaced());
+  writer.reset();
+  EXPECT_TRUE(reader.replaced()) << "an unlinked ring was not noticed";
+  writer.emplace(camera, tiny_spec());
+  EXPECT_TRUE(reader.replaced()) << "a ring created again under the same name was not noticed";
+  proto::FrameRingReader fresh(camera);
+  EXPECT_FALSE(fresh.replaced());
 }

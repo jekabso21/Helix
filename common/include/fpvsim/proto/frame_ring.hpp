@@ -18,7 +18,7 @@
 #include <string>
 #include <utility>
 
-// Frame ring of docs/INTERFACES.md section 4: one per camera, seqlock, readers never block
+// Frame ring: one per camera, seqlock, readers never block
 namespace fpvsim::proto {
 
 inline constexpr std::uint32_t kFrameMagic = 0x46565046;  // "FPVF"
@@ -178,13 +178,17 @@ class FrameRingWriter {
       throw std::runtime_error("frame ring needs at least 3 slots");
     }
     name_ = ring_path(camera_name);
-    detail::Fd fd(::shm_open(name_.c_str(), O_CREAT | O_RDWR | O_TRUNC, 0600));
+    detail::Fd fd(::shm_open(name_.c_str(), O_CREAT | O_RDWR, 0600));
     if (fd.get() < 0) {
       throw std::runtime_error("shm_open " + name_ + ": " + std::strerror(errno));
     }
     // Held for the writer's lifetime and dropped by the kernel when the process dies, so a ring
-    // nobody holds is one a killed publisher left behind (see ring_is_stale)
-    if (::flock(fd.get(), LOCK_SH) != 0) {
+    // nobody holds is one a killed publisher left behind. Taken before the ring is touched, so a
+    // second writer is refused instead of resetting a ring that is being published.
+    if (::flock(fd.get(), LOCK_EX | LOCK_NB) != 0) {
+      if (errno == EWOULDBLOCK) {
+        throw std::runtime_error("frame ring " + name_ + " already has a publisher");
+      }
       throw std::runtime_error("flock " + name_ + ": " + std::strerror(errno));
     }
     const std::size_t size = ring_size_bytes(spec);
@@ -266,8 +270,8 @@ class FrameRingWriter {
 // Read-only view. read_latest() copies the newest complete frame, or reports nothing new.
 class FrameRingReader {
  public:
-  explicit FrameRingReader(const std::string& camera_name) {
-    const std::string name = ring_path(camera_name);
+  explicit FrameRingReader(const std::string& camera_name) : name_(ring_path(camera_name)) {
+    const std::string& name = name_;
     const int fd = ::shm_open(name.c_str(), O_RDONLY, 0);
     if (fd < 0) {
       throw std::runtime_error("shm_open " + name + ": " + std::strerror(errno));
@@ -277,6 +281,8 @@ class FrameRingReader {
       ::close(fd);
       throw std::runtime_error("frame ring " + name + " is too small");
     }
+    device_ = info.st_dev;
+    inode_ = info.st_ino;
     const auto size = static_cast<std::size_t>(info.st_size);
     void* base = ::mmap(nullptr, size, PROT_READ, MAP_SHARED, fd, 0);
     ::close(fd);
@@ -306,6 +312,19 @@ class FrameRingReader {
   }
   [[nodiscard]] std::uint64_t latest_seq() const {
     return header().latest_seq.load(std::memory_order_acquire);
+  }
+
+  // True once the name no longer refers to the mapped ring: its writer closed and unlinked it,
+  // and a new writer, if any, publishes into a different object. Reopen to follow it.
+  [[nodiscard]] bool replaced() const {
+    const int fd = ::shm_open(name_.c_str(), O_RDONLY, 0);
+    if (fd < 0) {
+      return true;
+    }
+    struct stat info{};
+    const bool same = ::fstat(fd, &info) == 0 && info.st_dev == device_ && info.st_ino == inode_;
+    ::close(fd);
+    return !same;
   }
 
   // Copies the newest frame if it is newer than after_seq. Returns its sequence, or 0 when there
@@ -343,6 +362,9 @@ class FrameRingReader {
         slot + header().slot_size_bytes - kFrameSlotTrailerSize));
   }
 
+  std::string name_;
+  dev_t device_ = 0;
+  ino_t inode_ = 0;
   detail::Mapping map_;
 };
 

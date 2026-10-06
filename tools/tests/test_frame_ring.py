@@ -12,7 +12,7 @@ def test_only_rings_nobody_holds_are_removed(tmp_path: Path) -> None:
         path.write_bytes(b"\0" * 128)
 
     with held.open("rb") as publisher:
-        fcntl.flock(publisher, fcntl.LOCK_SH)
+        fcntl.flock(publisher, fcntl.LOCK_EX)
         removed = remove_stale_rings(tmp_path)
 
     assert removed == [stale]
