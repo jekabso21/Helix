@@ -13,10 +13,15 @@ environment, camera video, link emulation, failure injection and test automation
 
 ## Demo
 
-![fpvsim demo: GStreamer video window, Input tab, chase view and FPV preview](demo/preview.gif)
+![fpvsim demo: flying the FPV view with the Betaflight OSD, input, telemetry and motor outputs](demo/2026-10-07-new-ui.gif)
 
-[Full video](demo/2026-09-22_14-03-44.mp4): flying with a RadioMaster Boxer, chase and FPV views,
-and the video output in a GStreamer window.
+[Full video](demo/2026-10-07-new-ui.mp4): the app flown with a RadioMaster Boxer. The controller
+is detected and its mapping loaded on its own; the FPV view shows the published camera feed with
+the Betaflight OSD, the Telemetry dock follows the flight live (FC state, rates, battery, motors),
+a crash ends on Betaflight's stats screen, and the raw camera output plays in a GStreamer window.
+
+[Earlier video](demo/2026-09-22-first-flight.mp4): the first flight, with chase and FPV views and
+the video output in a GStreamer window.
 
 ## Setup
 
@@ -41,6 +46,7 @@ CMake presets: `dev` (GCC, Debug, ASan and UBSan), `clang` (Clang, warnings as e
 ./scripts/run_app_video.sh                                  # GUI app plus a GStreamer window with the camera output
 ./scripts/run_app.sh -- --attach                            # GUI attached to a running simctl run
 ./scripts/run_app.sh -- --screenshot /tmp/app.png           # save the window content and quit
+./scripts/run_app.sh -- --ui-scale 1.25                     # start at another UI scale (Ctrl + / Ctrl - / Ctrl 0 in the app)
 uv run --project tools simctl validate configs/sessions/ci_hover.yaml
 uv run --project tools simctl run configs/sessions/ci_hover.yaml --headless   # hover test flight, run dir in runs/
 uv run --project tools python tools/spikes/spin_motors.py   # arm Betaflight SITL, read motors
