@@ -1,5 +1,8 @@
 #include <gtest/gtest.h>
 
+#include <sys/file.h>
+#include <sys/wait.h>
+
 #include <atomic>
 #include <cstring>
 #include <string>
@@ -186,4 +189,40 @@ TEST(FrameRingTest, ReaderFollowsAPublisherThatRestarted) {
   EXPECT_EQ(seq, 1U) << "the reader ignored a restarted publisher";
   EXPECT_EQ(meta.frame_index, 42U);
   EXPECT_EQ(pixels.front(), std::byte{0x02});
+}
+
+namespace {
+
+// True when nobody holds the ring's lock, which is how a sweep tells a dead publisher's ring
+bool ring_unlocked(const std::string& camera) {
+  const int fd = ::shm_open(proto::ring_path(camera).c_str(), O_RDONLY, 0);
+  if (fd < 0) {
+    return false;
+  }
+  const bool unlocked = ::flock(fd, LOCK_EX | LOCK_NB) == 0;
+  ::close(fd);
+  return unlocked;
+}
+
+}  // namespace
+
+TEST(FrameRingTest, ALiveWriterHoldsItsRingAndAKilledOneLeavesItUnheld) {
+  const std::string camera = unique_name("lock");
+  {
+    proto::FrameRingWriter writer(camera, tiny_spec());
+    EXPECT_FALSE(ring_unlocked(camera));
+  }
+
+  const pid_t child = ::fork();
+  ASSERT_GE(child, 0);
+  if (child == 0) {
+    // no destructor runs, as when the app is killed
+    auto* writer = new proto::FrameRingWriter(camera, tiny_spec());
+    (void)writer;
+    ::_exit(0);
+  }
+  int status = 0;
+  ASSERT_EQ(::waitpid(child, &status, 0), child);
+  EXPECT_TRUE(ring_unlocked(camera)) << "the dead writer's ring is not recognisable as stale";
+  ::shm_unlink(proto::ring_path(camera).c_str());
 }

@@ -1,3 +1,4 @@
+import fcntl
 import mmap
 import struct
 from dataclasses import dataclass
@@ -36,6 +37,21 @@ def ring_path(camera: str) -> Path:
     if "/" in camera:
         return Path(camera)
     return SHM_DIR / f"{SHM_PREFIX}{camera}"
+
+
+def remove_stale_rings(shm_dir: Path = SHM_DIR) -> list[Path]:
+    """Deletes rings no publisher holds any more, which is what a killed app leaves behind."""
+    removed: list[Path] = []
+    for path in sorted(shm_dir.glob(f"{SHM_PREFIX}*")):
+        try:
+            with path.open("rb") as ring:
+                # a live publisher holds a shared lock for as long as it runs
+                fcntl.flock(ring, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                path.unlink()
+        except OSError:
+            continue
+        removed.append(path)
+    return removed
 
 
 class FrameRingReader:

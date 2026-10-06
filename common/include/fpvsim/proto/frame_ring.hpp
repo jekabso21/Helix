@@ -1,6 +1,7 @@
 #pragma once
 
 #include <fcntl.h>
+#include <sys/file.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
 #include <unistd.h>
@@ -139,6 +140,34 @@ class Mapping {
   std::size_t size_ = 0;
 };
 
+class Fd {
+ public:
+  Fd() = default;
+  explicit Fd(int fd) : fd_(fd) {}
+  Fd(Fd&& other) noexcept : fd_(std::exchange(other.fd_, -1)) {}
+  Fd& operator=(Fd&& other) noexcept {
+    if (this != &other) {
+      reset();
+      fd_ = std::exchange(other.fd_, -1);
+    }
+    return *this;
+  }
+  Fd(const Fd&) = delete;
+  Fd& operator=(const Fd&) = delete;
+  ~Fd() { reset(); }
+
+  [[nodiscard]] int get() const { return fd_; }
+
+ private:
+  void reset() {
+    if (fd_ >= 0) {
+      ::close(fd_);
+      fd_ = -1;
+    }
+  }
+  int fd_ = -1;
+};
+
 }  // namespace detail
 
 // Single writer. Publishes with the seqlock of section 4.3; never blocks on readers.
@@ -149,20 +178,24 @@ class FrameRingWriter {
       throw std::runtime_error("frame ring needs at least 3 slots");
     }
     name_ = ring_path(camera_name);
-    const int fd = ::shm_open(name_.c_str(), O_CREAT | O_RDWR | O_TRUNC, 0600);
-    if (fd < 0) {
+    detail::Fd fd(::shm_open(name_.c_str(), O_CREAT | O_RDWR | O_TRUNC, 0600));
+    if (fd.get() < 0) {
       throw std::runtime_error("shm_open " + name_ + ": " + std::strerror(errno));
     }
+    // Held for the writer's lifetime and dropped by the kernel when the process dies, so a ring
+    // nobody holds is one a killed publisher left behind (see ring_is_stale)
+    if (::flock(fd.get(), LOCK_SH) != 0) {
+      throw std::runtime_error("flock " + name_ + ": " + std::strerror(errno));
+    }
     const std::size_t size = ring_size_bytes(spec);
-    if (::ftruncate(fd, static_cast<off_t>(size)) != 0) {
-      ::close(fd);
+    if (::ftruncate(fd.get(), static_cast<off_t>(size)) != 0) {
       throw std::runtime_error("ftruncate " + name_ + ": " + std::strerror(errno));
     }
-    void* base = ::mmap(nullptr, size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
-    ::close(fd);
+    void* base = ::mmap(nullptr, size, PROT_READ | PROT_WRITE, MAP_SHARED, fd.get(), 0);
     if (base == MAP_FAILED) {
       throw std::runtime_error("mmap " + name_ + ": " + std::strerror(errno));
     }
+    lock_ = std::move(fd);
     map_ = detail::Mapping(base, size);
     std::memset(map_.bytes(), 0, size);
     FrameHeader& header = *std::launder(reinterpret_cast<FrameHeader*>(map_.bytes()));
@@ -226,6 +259,7 @@ class FrameRingWriter {
 
   RingSpec spec_;
   std::string name_;
+  detail::Fd lock_;
   detail::Mapping map_;
 };
 
