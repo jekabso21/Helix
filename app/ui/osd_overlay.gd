@@ -1,6 +1,7 @@
 extends Control
 ## Draws the Betaflight OSD canvas (MSP DisplayPort, via the backend's osd topic) over the camera image
 
+const OSD_FONT := preload("res://ui/osd_font.gd")
 const BLINK_HZ := 2.0
 const ATTR_BLINK := 0x40
 ## The horizon ladder is nine one-row glyphs, index 0 at the top of the cell (osd_elements.c)
@@ -40,6 +41,8 @@ var attrs: Array = []
 var draws: int = 0
 
 var _font: Font = null
+var _atlas: Variant = OSD_FONT.new()
+var _atlas_source := ""
 
 
 func _ready() -> void:
@@ -49,11 +52,38 @@ func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	BackendClient.osd.connect(set_canvas)
 	BackendClient.status.connect(_on_status)
+	# made while the running status is being delivered, an overlay would not hear it until the next one
+	if not BackendClient.last_status.is_empty():
+		_on_status(BackendClient.last_status)
 
 
 func _on_status(data: Dictionary) -> void:
 	if data.get("state", "") != "running":
 		clear()
+		return
+	_load_font(str(data.get("run_dir", "")))
+
+
+## The session can name a flight controller font; without one the glyphs stay Unicode look-alikes
+func _load_font(run_dir: String) -> void:
+	if run_dir == "" or run_dir == _atlas_source:
+		return
+	_atlas_source = run_dir
+	var text := FileAccess.get_file_as_string(run_dir + "/resolved/session.json")
+	var path := font_path(JSON.parse_string(text) if text != "" else null)
+	_atlas = OSD_FONT.new()
+	if path != "" and not _atlas.load_path(path):
+		push_warning("OSD font: " + _atlas.error)
+
+
+## The resolved session writes null when no font is set
+static func font_path(session: Variant) -> String:
+	if not (session is Dictionary):
+		return ""
+	var betaflight: Variant = (session as Dictionary).get("betaflight")
+	var osd_block: Variant = betaflight.get("osd") if betaflight is Dictionary else null
+	var font: Variant = osd_block.get("font") if osd_block is Dictionary else null
+	return font if font is String else ""
 
 
 func clear() -> void:
@@ -99,6 +129,11 @@ func _draw() -> void:
 			var code := int(row[c])
 			var attr: int = int(row_attrs[c]) if c < row_attrs.size() else 0
 			if (attr & ATTR_BLINK) != 0 and not blink_on:
+				continue
+			if _atlas.is_loaded():
+				# a real font already has every glyph, ladder included
+				if code != 0x20 and code != 0x00:
+					draw_texture_rect_region(_atlas.texture, Rect2(Vector2(c, r) * cell, cell), _atlas.region(code))
 				continue
 			if is_horizon_bar(code):
 				_draw_horizon_bar(c, r, code - AH_BAR_FIRST, cell)

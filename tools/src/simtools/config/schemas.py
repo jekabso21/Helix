@@ -46,6 +46,7 @@ class RpmFilterConfig(Strict):
 
 class OsdConfig(Strict):
     enabled: bool = True
+    font: str | None = None  # MAX7456 .mcm or a PNG atlas of stacked glyphs; none draws look-alikes
     video_system: Literal["hd", "pal", "ntsc"] = "hd"
     canvas_cols: int = Field(default=53, ge=1, le=63)
     canvas_rows: int = Field(default=20, ge=1, le=31)
@@ -159,6 +160,7 @@ class AppConfig(Strict):
 class VideoConfig(Strict):
     enabled: bool = True
     status_port: int = 7730
+    control_port: int = 7731
 
 
 class LoggingConfig(Strict):
@@ -197,6 +199,8 @@ class CameraConfig(Strict):
     rolling_shutter_readout_s: float = Field(default=0.0, ge=0.0)
     sensor_latency_s: float = Field(default=0.0, ge=0.0)
     noise: CameraNoiseConfig = Field(default_factory=CameraNoiseConfig)
+    burn_in_counter: bool = False  # draws the frame counter into the image for latency runs
+    osd: bool = True  # draw the flight controller OSD into this camera's image
     outputs: list[str] = Field(default_factory=list[str])
 
     @model_validator(mode="after")

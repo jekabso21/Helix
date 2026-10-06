@@ -13,7 +13,14 @@ func _initialize() -> void:
 	_test_plots_panel()
 	_test_osd_overlay()
 	_test_frame_publisher()
+	_test_burn_in_counter()
 	_test_camera_panel_follows_the_config()
+	_test_camera_rotation_shift()
+	_test_output_status_lines()
+	_test_osd_font()
+	await _test_camera_selector()
+	await _test_camera_popout_mirrors_the_dock()
+	await _test_osd_overlay_takes_the_running_session()
 	print("%d checks, %d failures" % [checks, failures])
 	quit(1 if failures > 0 else 0)
 
@@ -168,6 +175,34 @@ func _test_frame_publisher() -> void:
 	publisher.close()
 
 
+## The counter a latency run reads back out of a video output: marker cell, guard cell, then bits
+func _test_burn_in_counter() -> void:
+	if not ClassDB.class_exists("FramePublisher"):
+		return
+	const WIDTH := 20 * 16   # two cells wider than the counter, so its edge can be checked
+	const HEIGHT := 16
+	var publisher: Variant = ClassDB.instantiate("FramePublisher")
+	check(publisher.open("selftest_burnin", WIDTH, HEIGHT, 60.0), "burn-in ring opens")
+	publisher.set_burn_in_counter(true)
+	check(publisher.burn_in_counter(), "the publisher reports the counter is on")
+	var pixels := PackedByteArray()
+	pixels.resize(publisher.frame_bytes())
+	pixels.fill(0x40)
+	publisher.publish(pixels, 1000, 12345, Vector3.ZERO, Quaternion(0, 0, 0, 1))
+	var f := FileAccess.open("/dev/shm/fpvsim.selftest_burnin", FileAccess.READ)
+	check(f != null, "the burn-in ring exists in /dev/shm")
+	if f != null:
+		var bits := ""
+		for cell in range(18):
+			f.seek(128 + 128 + 8 * WIDTH * 3 + (cell * 16 + 8) * 3)
+			bits += "1" if f.get_8() >= 128 else "0"
+		# 12345 as sixteen bits, most significant first
+		check(bits == "10" + "0011000000111001", "counter pattern for frame 12345: " + bits)
+		f.seek(128 + 128 + 8 * WIDTH * 3 + (18 * 16 + 4) * 3)
+		check(f.get_8() == 0x40, "the counter leaves the rest of the row alone")
+	publisher.close()
+
+
 ## The camera panel takes its resolution, fps, field of view and mount from the resolved config,
 ## so changing the camera YAML or moving the camera part changes what is rendered.
 func _test_camera_panel_follows_the_config() -> void:
@@ -191,15 +226,183 @@ func _test_camera_panel_follows_the_config() -> void:
 	_write_json(dir + "/resolved/cameras.json", cameras)
 	_write_json(dir + "/resolved/drone.json", drone)
 
-	var panel: Variant = load("res://ui/camera_panel.gd").new()
-	panel._load_mount(ProjectSettings.globalize_path(dir), "probe_fpv")
-	check(panel.mount_position_frd.is_equal_approx(Vector3(0.055, 0.0, -0.015)), "mount position from the compiled model, got %s" % panel.mount_position_frd)
-	var look := Frames.godot_quat_from_frd(panel.mount_q_frd_from_camera) * Vector3(0, 0, -1)
+	var panel: Variant = load("res://ui/camera_panel.gd")
+	var drone_doc: Variant = JSON.parse_string(FileAccess.get_file_as_string(dir + "/resolved/drone.json"))
+	var mount: Dictionary = panel.mount_from_drone(drone_doc, "probe_fpv")
+	check(mount["position_frd"].is_equal_approx(Vector3(0.055, 0.0, -0.015)), "mount position from the compiled model, got %s" % mount["position_frd"])
+	var look := Frames.godot_quat_from_frd(mount["q_frd_from_camera"]) * Vector3(0, 0, -1)
 	check(look.y > 0.4, "a 35 deg nose-up camera part tilts the view up, got %s" % look)
-	panel.free()
+	check(panel.mount_from_drone(drone_doc, "absent").is_empty(), "a camera with no mount falls back")
 
 
 func _write_json(path: String, data: Dictionary) -> void:
 	var f := FileAccess.open(path, FileAccess.WRITE)
 	f.store_string(JSON.stringify(data))
 	f.close()
+
+
+## Rolling shutter and motion blur are both "how far did the camera turn in this interval"
+func _test_camera_rotation_shift() -> void:
+	var panel := load("res://ui/camera_panel.gd")
+	var half_hfov := deg_to_rad(90.0) / 2.0   # tan(45 deg) = 1, so the maths is easy to follow
+	var aspect := 2.0
+	check(panel.rotation_uv_shift(Vector3.ZERO, 0.01, half_hfov, aspect) == Vector2.ZERO, "a still camera does not shift")
+	check(panel.rotation_uv_shift(Vector3(1, 1, 1), 0.0, half_hfov, aspect) == Vector2.ZERO, "a zero interval does not shift")
+	# yaw is about FRD z (down): 0.2 rad over the interval, half-width tan(45) = 1 -> u = 0.1
+	var yaw: Vector2 = panel.rotation_uv_shift(Vector3(0, 0, 0.2), 1.0, half_hfov, aspect)
+	check(absf(yaw.x - 0.1) < 1e-6 and absf(yaw.y) < 1e-9, "yaw shifts horizontally by rate/2tan, got %s" % yaw)
+	# pitch is about FRD y (right); the vertical half-angle is smaller, so the same rate shifts more
+	var pitch: Vector2 = panel.rotation_uv_shift(Vector3(0, 0.2, 0), 1.0, half_hfov, aspect)
+	check(absf(pitch.y - 0.2) < 1e-6 and absf(pitch.x) < 1e-9, "pitch shifts vertically by aspect x more, got %s" % pitch)
+	# roll is not a translation, so it is left out rather than approximated
+	check(panel.rotation_uv_shift(Vector3(5.0, 0, 0), 1.0, half_hfov, aspect) == Vector2.ZERO, "roll does not translate the image")
+	# twice the interval, twice the shift
+	var double: Vector2 = panel.rotation_uv_shift(Vector3(0, 0, 0.2), 2.0, half_hfov, aspect)
+	check(absf(double.x - 2.0 * yaw.x) < 1e-9, "the shift scales with the interval")
+
+
+## The per-output lines the camera panel shows from simvideo reports
+func _test_output_status_lines() -> void:
+	var panel := load("res://ui/camera_panel.gd")
+	var running := {"index": 0, "state": "running", "fps": 59.94, "bitrate_bps": 4000000.0, "last_error": null}
+	check(panel.output_summary(running) == "out 0  running  59.9 fps  4.0 Mbit/s", panel.output_summary(running))
+	var broken := {"index": 1, "state": "error", "fps": 0.0, "last_error": "could not link"}
+	check(panel.output_summary(broken) == "out 1  error  0.0 fps  could not link", panel.output_summary(broken))
+	check(panel.output_colour("error").r > panel.output_colour("running").r, "an error stands out")
+	check(panel.output_colour("disabled") != panel.output_colour("running"), "a disabled output differs")
+
+
+## Every configured camera gets its own feed; the selector picks which one the panel shows
+func _test_camera_selector() -> void:
+	var panel: Node = load("res://ui/camera_panel.tscn").instantiate()
+	root.add_child(panel)
+	await panel.ready
+	var configs := [
+		{"name": "main_fpv", "width": 1280, "height": 720, "fps": 60.0, "optics": {"hfov_rad": deg_to_rad(120.0)}},
+		{"name": "rear_fpv", "width": 640, "height": 360, "fps": 30.0, "osd": false, "optics": {"hfov_rad": deg_to_rad(90.0)}},
+	]
+	panel._build_feeds(configs)
+	check(panel._feeds.size() == 2, "two cameras give two feeds, got %d" % panel._feeds.size())
+	check(panel._selector.item_count == 2 and panel._selector.get_item_text(1) == "rear_fpv", "both cameras are listed")
+	check(panel.selected_feed().name == "main_fpv", "the first camera is shown first")
+	check(panel.selected_feed().viewport.size == Vector2i(1280, 720), "each feed renders at its own resolution")
+	panel._on_camera_selected(1)
+	check(panel.selected_feed().name == "rear_fpv", "the selector switches the shown camera")
+	check(panel.selected_feed().viewport.size == Vector2i(640, 360), "the second feed has its own size")
+	check(panel._feeds[1].osd == false, "a camera can turn the OSD off")
+	check(panel._feeds[1].viewport.get_child_count() == 1, "and then gets no OSD overlay node")
+	check(panel._feeds[0].viewport.get_child_count() == 2, "while the main camera keeps one")
+	panel._build_feeds([
+		{"name": "plain", "width": 64, "height": 36, "fps": 30.0, "optics": {"hfov_rad": 1.0, "distortion": {"model": "none", "k": [0.1, 0.2, 0.3, 0.4]}}},
+		{"name": "fisheye", "width": 64, "height": 36, "fps": 30.0, "optics": {"hfov_rad": 1.0, "distortion": {"model": "fisheye", "k": [0.1, 0.2, 0.3, 0.4]}}},
+	])
+	check(panel._feeds[0].distortion_k == Vector4.ZERO, "a camera without a distortion model is a plain pinhole")
+	check(panel._feeds[1].distortion_k == Vector4(0.1, 0.2, 0.3, 0.4), "a fisheye camera keeps its coefficients")
+	panel._build_feeds(configs)
+	panel._on_video({"camera": "rear_fpv", "outputs": [
+		{"index": 0, "state": "running", "fps": 30.0},
+		{"index": 1, "state": "disabled", "fps": 0.0},
+	]})
+	check(panel._outputs.get_child_count() == 2, "one row per output")
+	var first_toggle: CheckButton = panel._outputs.get_child(0).get_child(0)
+	var second_toggle: CheckButton = panel._outputs.get_child(1).get_child(0)
+	check(first_toggle.button_pressed and not second_toggle.button_pressed, "the switches follow the reported state")
+	panel._on_video({"camera": "main_fpv", "outputs": []})
+	check(panel._outputs.get_child_count() == 2, "a report for another camera is ignored")
+	# the pop-out window renders the main window's world through the same panel
+	var world := World3D.new()
+	panel.use_world(world)
+	check(panel._feeds[0].viewport.world_3d == world and panel._feeds[1].viewport.world_3d == world, "every feed follows the world it is given")
+	panel.queue_free()
+
+
+## A real flight controller font: black, white and transparent pixels out of a MAX7456 file
+func _test_osd_font() -> void:
+	var script: Variant = load("res://ui/osd_font.gd")
+	var font: Variant = script.new()
+	check(not font.is_loaded(), "a fresh font draws nothing")
+	check(not font.load_path("/nonexistent/font.mcm") and font.error != "", "a missing file is reported")
+	check(not font.load_mcm_text("not a font"), "a file without the header is refused")
+
+	# two glyphs: the first all white, the second black on the first row and transparent below
+	var lines := PackedStringArray(["MAX7456"])
+	for row in 18:
+		for part in 3:
+			lines.append("10101010")
+	for _pad in 10:
+		lines.append("01010101")
+	for row in 18:
+		for part in 3:
+			lines.append("00000000" if row == 0 else "01010101")
+	for _pad in 10:
+		lines.append("01010101")
+	check(font.load_mcm_text("\n".join(lines)), "the font loads: " + font.error)
+	check(font.glyph_count == 2 and font.glyph_size == Vector2i(12, 18), "two 12x18 glyphs, got %d %s" % [font.glyph_count, font.glyph_size])
+	check(font.region(1) == Rect2(0, 18, 12, 18), "glyph 1 is the second row of the atlas")
+	check(font.region(200) == Rect2(0, 18, 12, 18), "a code past the end clamps to the last glyph")
+	var image: Image = font.texture.get_image()
+	check(image.get_pixel(0, 0) == Color(1, 1, 1, 1), "the first glyph is white")
+	check(image.get_pixel(0, 18) == Color(0, 0, 0, 1), "the second glyph starts black")
+	check(image.get_pixel(0, 19).a == 0.0, "and is transparent below")
+
+	var atlas: Variant = script.new()
+	var strip := Image.create(24, 36 * 256, false, Image.FORMAT_RGBA8)
+	check(atlas.load_image(strip) and atlas.glyph_count == 256, "a PNG atlas of 256 stacked glyphs")
+	check(atlas.glyph_size == Vector2i(24, 36), "glyph size from the strip, got %s" % atlas.glyph_size)
+	check(not script.new().load_image(Image.create(8, 7, false, Image.FORMAT_RGBA8)), "a strip that is not a whole number of glyphs is refused")
+
+
+## After an await the root can still be setting up children, so nodes join it deferred
+func _add_to_root(node: Node) -> void:
+	root.add_child.call_deferred(node)
+	await node.ready
+
+
+## The pop-out shows what the docked panel renders: a second renderer would also open a second
+## publisher for every camera, and two writers on one ring fight over it
+func _test_camera_popout_mirrors_the_dock() -> void:
+	var dock: Node = load("res://ui/camera_panel.tscn").instantiate()
+	var popout: Node = load("res://ui/camera_panel.tscn").instantiate()
+	await _add_to_root(dock)
+	await _add_to_root(popout)
+	dock._build_feeds([
+		{"name": "main_fpv", "width": 320, "height": 180, "fps": 60.0, "optics": {"hfov_rad": deg_to_rad(120.0)}},
+		{"name": "rear_fpv", "width": 160, "height": 90, "fps": 30.0, "osd": false, "optics": {"hfov_rad": deg_to_rad(90.0)}},
+	])
+	popout.mirror(dock)
+	check(popout._feeds.is_empty(), "the pop-out renders no camera of its own")
+	popout._on_status({"state": "running", "run_dir": ProjectSettings.globalize_path("user://camera_cfg_test")})
+	check(popout._feeds.is_empty(), "a running session gives the pop-out no feeds and no publishers")
+	popout._process(0.0)
+	check(popout._view.texture == dock._view.texture, "the pop-out shows the docked panel's picture")
+	dock._on_camera_selected(1)
+	popout._process(0.0)
+	check(popout._view.texture == dock._view.texture, "and follows the camera picked in the dock")
+	check(popout._header.text == dock._header.text, "with the same header line")
+	popout.queue_free()
+	dock.queue_free()
+
+
+## An overlay created while the session is already running (the feeds are rebuilt while the
+## running status is being delivered) still loads the session's OSD font
+func _test_osd_overlay_takes_the_running_session() -> void:
+	var script: Variant = load("res://ui/osd_overlay.gd")
+	check(script.font_path({"betaflight": {"osd": {"font": null}}}) == "", "a session without a font names no font")
+	check(script.font_path({"betaflight": {"osd": {}}}) == "", "nor does one without the key")
+	check(script.font_path({"betaflight": {"osd": {"font": "/x/f.mcm"}}}) == "/x/f.mcm", "a configured font is passed on")
+	check(script.font_path(null) == "", "an unreadable session names no font")
+
+	var dir := "user://osd_session_test"
+	DirAccess.make_dir_recursive_absolute(dir + "/resolved")
+	var font_file := ProjectSettings.globalize_path(dir + "/font.png")
+	Image.create(24, 36 * 256, false, Image.FORMAT_RGBA8).save_png(font_file)
+	_write_json(dir + "/resolved/session.json", {"betaflight": {"osd": {"font": font_file}}})
+	var backend: Node = root.get_node("BackendClient")
+	var previous: Dictionary = backend.last_status
+	backend.last_status = {"state": "running", "run_dir": ProjectSettings.globalize_path(dir)}
+	var overlay := Control.new()
+	overlay.set_script(script)
+	await _add_to_root(overlay)
+	check(overlay._atlas.is_loaded(), "an overlay made during a running session uses its OSD font")
+	backend.last_status = previous
+	overlay.queue_free()

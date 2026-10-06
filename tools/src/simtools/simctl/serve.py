@@ -60,6 +60,9 @@ class Supervisor:
         self._fc_stop = threading.Event()
         self._osd_thread: threading.Thread | None = None
         self._osd_grid: OsdGrid | None = None
+        self._video_thread: threading.Thread | None = None
+        self._video_stop = threading.Event()
+        self._video_status: Json = {}
         # session processes carry a parent-death signal; forked from a request handler thread
         # they died as soon as the client that asked for them hung up
         self._spawner = Spawner()
@@ -204,12 +207,14 @@ class Supervisor:
             self._state = "running"
         self._start_fc_poller()
         self._start_osd_reader(resolved.session["betaflight"]["osd"])
+        self._start_video_status(resolved)
         self._publish("status", self.status())
         return {"run_dir": str(run_dir), "processes": self.status()["processes"]}
 
     def stop(self) -> Json:
         self._stop_fc_poller()
         self._stop_osd_reader()
+        self._stop_video_status()
         with self._lock:
             processes = self._processes
             self._processes = None
@@ -369,6 +374,75 @@ class Supervisor:
                     if frame.command == MspCommand.DISPLAYPORT and grid.apply(frame.payload):
                         self._publish("osd", grid.to_json())
 
+    # simvideo status over UDP
+
+    def get_video(self) -> Json:
+        with self._lock:
+            return {"cameras": [self._video_status[name] for name in sorted(self._video_status)]}
+
+    def set_output_enabled(self, camera: str, index: int, enabled: bool) -> Json:
+        """Tells simvideo to turn one output of one camera off or on; the next report shows it."""
+        with self._lock:
+            resolved = self._resolved
+            known = list(self._video_status)
+        if resolved is None or not resolved.video_enabled:
+            raise LaunchError("no session with video is running")
+        names = [str(camera_doc["name"]) for camera_doc in resolved.cameras["cameras"]]
+        if camera not in names:
+            raise LaunchError(f"unknown camera {camera}; this session has {', '.join(names)}")
+        message = {"version": 1, "camera": camera, "index": index, "enabled": enabled}
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        with sock:
+            sock.sendto(json.dumps(message).encode(), (HOST, int(resolved.cameras["control_port"])))
+        return {"ok": True, "camera": camera, "index": index, "enabled": enabled, "seen": known}
+
+    def _start_video_status(self, resolved: ResolvedSession) -> None:
+        if resolved.video_enabled:
+            self.watch_video_status(int(resolved.cameras["status_port"]))
+
+    def watch_video_status(self, port: int) -> None:
+        """Listens for simvideo reports on one port until the session stops."""
+        with self._lock:
+            self._video_status = {}
+        self._video_stop.clear()
+        self._video_thread = threading.Thread(
+            target=self._read_video_status, args=(port,), daemon=True
+        )
+        self._video_thread.start()
+
+    def _stop_video_status(self) -> None:
+        self._video_stop.set()
+        if self._video_thread is not None:
+            self._video_thread.join(timeout=3.0)
+            self._video_thread = None
+        with self._lock:
+            self._video_status = {}
+
+    def _read_video_status(self, port: int) -> None:
+        """Keeps the latest report from each camera and passes it on to whoever is watching."""
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        try:
+            sock.bind((HOST, port))
+        except OSError:
+            sock.close()
+            return
+        with sock:
+            sock.settimeout(0.5)
+            while not self._video_stop.is_set():
+                try:
+                    data = sock.recv(65535)
+                except TimeoutError:
+                    continue
+                except OSError:
+                    return
+                report = _video_report(data)
+                if report is None:
+                    continue
+                with self._lock:
+                    self._video_status[str(report["camera"])] = report
+                self._publish("video", report)
+
     # flight controller status over MSP on UART2
 
     def _start_fc_poller(self) -> None:
@@ -403,6 +477,19 @@ class Supervisor:
                     },
                 )
                 self._fc_stop.wait(FC_POLL_S)
+
+
+def _video_report(data: bytes) -> Json | None:
+    """A simvideo status datagram, or None when it is not one we understand."""
+    try:
+        report = json.loads(data.decode())
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        return None
+    if not isinstance(report, dict) or report.get("version") != 1:
+        return None
+    if not isinstance(report.get("camera"), str) or not isinstance(report.get("outputs"), list):
+        return None
+    return cast(Json, report)
 
 
 def split_lines(data: bytes) -> tuple[list[bytes], bytes]:
@@ -521,11 +608,20 @@ class Handler(socketserver.StreamRequestHandler):
                 ), None
             if method == "get_osd":
                 return self._ok(request_id, supervisor.get_osd()), None
+            if method == "get_video":
+                return self._ok(request_id, supervisor.get_video()), None
+            if method == "set_output_enabled":
+                return self._ok(
+                    request_id,
+                    supervisor.set_output_enabled(
+                        str(params["camera"]), int(params["index"]), bool(params["enabled"])
+                    ),
+                ), None
             if method == "subscribe":
                 topic = str(params.get("topic", ""))
-                if topic not in ("status", "fc", "osd"):
+                if topic not in ("status", "fc", "osd", "video"):
                     return self._error(
-                        request_id, "invalid_params", "topic must be status, fc or osd"
+                        request_id, "invalid_params", "topic must be status, fc, osd or video"
                     ), None
                 return self._ok(request_id, {"subscription_id": next_id}), supervisor.subscribe(
                     topic

@@ -207,6 +207,7 @@ def resolve_session(session_path: Path, base_dir: Path) -> ResolvedSession:
             },
             "osd": {
                 "enabled": osd.enabled,
+                "font": str(base_dir / osd.font) if osd.font else None,
                 "uart_port": osd_uart_port,
                 "cols": osd.canvas_cols,
                 "rows": osd.canvas_rows,
@@ -242,7 +243,12 @@ def resolve_session(session_path: Path, base_dir: Path) -> ResolvedSession:
         session=resolved,
         drone=resolve_drone(drone),
         drone_config=drone,
-        cameras=resolve_cameras(cameras, session.betaflight.host, session.video.status_port),
+        cameras=resolve_cameras(
+            cameras,
+            session.betaflight.host,
+            session.video.status_port,
+            session.video.control_port,
+        ),
         video_enabled=session.video.enabled and bool(cameras),
         cli_lines=cli_lines,
         betaflight_binary=base_dir / session.betaflight.binary,
@@ -251,12 +257,15 @@ def resolve_session(session_path: Path, base_dir: Path) -> ResolvedSession:
     )
 
 
-def resolve_cameras(cameras: list[CameraConfig], host: str, status_port: int) -> dict[str, Any]:
-    """The document simvideo reads (docs/INTERFACES.md 5.1); the app uses the optical fields."""
+def resolve_cameras(
+    cameras: list[CameraConfig], host: str, status_port: int, control_port: int
+) -> dict[str, Any]:
+    """The document simvideo reads; the app uses the optical fields."""
     return {
         "schema_version": RESOLVED_SCHEMA_VERSION,
         "host": host,
         "status_port": status_port,
+        "control_port": control_port,
         "cameras": [
             {
                 "name": camera.name,
@@ -265,6 +274,8 @@ def resolve_cameras(cameras: list[CameraConfig], host: str, status_port: int) ->
                 "fps": camera.fps,
                 "pixel_format": "rgb8",
                 "sensor_latency_s": camera.sensor_latency_s,
+                "burn_in_counter": camera.burn_in_counter,
+                "osd": camera.osd,
                 "outputs": [{"pipeline": pipeline, "enabled": True} for pipeline in camera.outputs],
                 "optics": {
                     "projection": camera.projection,

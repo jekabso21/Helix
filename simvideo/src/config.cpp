@@ -49,6 +49,7 @@ VideoConfig parse_cameras(const std::string& json_text, const std::filesystem::p
   VideoConfig config;
   config.host = require(document, "host", path, "")->get<std::string>();
   config.status_port = require(document, "status_port", path, "")->get<std::uint16_t>();
+  config.control_port = require(document, "control_port", path, "")->get<std::uint16_t>();
   const nlohmann::json& cameras = *require(document, "cameras", path, "");
   if (!cameras.is_array() || cameras.empty()) {
     fail(path, "cameras", "expected a non-empty array");

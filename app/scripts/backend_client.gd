@@ -6,6 +6,7 @@ signal disconnected()
 signal status(data: Dictionary)
 signal fc_status(data: Dictionary)
 signal osd(data: Dictionary)
+signal video(data: Dictionary)
 signal response(method: String, ok: bool, result: Dictionary)
 signal unreachable(seconds: float)
 
@@ -14,6 +15,7 @@ var port: int = 7740
 var is_connected_to_backend: bool = false
 var last_status: Dictionary = {}
 var last_fc: Dictionary = {}
+var last_video: Dictionary = {}
 
 var _tcp := StreamPeerTCP.new()
 var _buffer := PackedByteArray()
@@ -66,6 +68,7 @@ func _process(_delta: float) -> void:
 			request("subscribe", {"topic": "status"})
 			request("subscribe", {"topic": "fc"})
 			request("subscribe", {"topic": "osd"})
+			request("subscribe", {"topic": "video"})
 		_read_lines()
 		return
 	if is_connected_to_backend:
@@ -112,6 +115,9 @@ func _handle_line(line: String) -> void:
 			fc_status.emit(data)
 		elif doc["event"] == "osd":
 			osd.emit(data)
+		elif doc["event"] == "video":
+			last_video = data
+			video.emit(data)
 		return
 	var id: int = int(doc.get("id", -1))
 	if not _pending.has(id):

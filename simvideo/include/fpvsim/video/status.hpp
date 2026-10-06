@@ -26,7 +26,7 @@ struct CameraStatus {
   std::vector<OutputStatus> outputs;
 };
 
-// One datagram of docs/INTERFACES.md section 8
+// One status datagram
 std::string status_json(const CameraStatus& status);
 
 }  // namespace fpvsim::video

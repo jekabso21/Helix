@@ -14,6 +14,7 @@ const char* kCameras = R"({
   "schema_version": 1,
   "host": "127.0.0.1",
   "status_port": 7730,
+  "control_port": 7731,
   "cameras": [
     {
       "name": "main_fpv", "width": 1280, "height": 720, "fps": 60.0,
@@ -32,6 +33,7 @@ TEST(VideoConfigTest, ParsesACompleteCameraList) {
   const video::VideoConfig config = video::parse_cameras(kCameras, "cameras.json");
   EXPECT_EQ(config.host, "127.0.0.1");
   EXPECT_EQ(config.status_port, 7730);
+  EXPECT_EQ(config.control_port, 7731);
   ASSERT_EQ(config.cameras.size(), 1U);
   const video::CameraSpec& camera = config.cameras.front();
   EXPECT_EQ(camera.name, "main_fpv");

@@ -3,6 +3,7 @@
 #include <gst/app/gstappsrc.h>
 #include <gst/gst.h>
 
+#include <algorithm>
 #include <mutex>
 #include <utility>
 
@@ -42,7 +43,8 @@ OutputBranch::OutputBranch(OutputBranch&& other) noexcept
       state_(std::move(other.state_)),
       last_error_(std::move(other.last_error_)),
       pushed_(other.pushed_),
-      backoff_(other.backoff_) {}
+      backoff_(other.backoff_),
+      pts_offset_ns_(other.pts_offset_ns_) {}
 
 OutputBranch::~OutputBranch() { stop(); }
 
@@ -82,6 +84,7 @@ void OutputBranch::start() {
   appsrc_ = appsrc;
   state_ = "running";
   last_error_.clear();
+  pts_offset_ns_.reset();
   window_start_ = std::chrono::steady_clock::now();
   pushed_at_window_ = pushed_;
 }
@@ -99,6 +102,23 @@ void OutputBranch::stop() {
   if (state_ == "running") {
     state_ = "disabled";
   }
+}
+
+void OutputBranch::set_enabled(bool enabled) {
+  if (enabled == output_.enabled) {
+    return;
+  }
+  output_.enabled = enabled;
+  if (!enabled) {
+    stop();
+    state_ = "disabled";
+    return;
+  }
+  // a fresh start, not a retry of whatever failed before it was turned off
+  last_error_.clear();
+  backoff_ = std::chrono::milliseconds(500);
+  state_ = "starting";
+  start();
 }
 
 void OutputBranch::fail(const std::string& message, std::chrono::steady_clock::time_point now) {
@@ -125,13 +145,22 @@ std::int64_t OutputBranch::running_time_ns() const {
   return static_cast<std::int64_t>(now - base);
 }
 
-void OutputBranch::push(void* buffer) {
+void OutputBranch::push(void* buffer, std::int64_t pts_ns) {
   if (appsrc_ == nullptr || state_ != "running") {
     return;
   }
-  auto* gst_buffer = static_cast<GstBuffer*>(buffer);
-  const GstFlowReturn flow =
-      gst_app_src_push_buffer(GST_APP_SRC(as_element(appsrc_)), gst_buffer_ref(gst_buffer));
+  if (!pts_offset_ns_) {
+    // Frames reach a pipeline after it went playing, and a restarted pipeline's clock begins
+    // again at zero, so a PTS on any other timeline would look late or far in the future to a
+    // clock-syncing sink such as v4l2sink. Place this pipeline's first frame at its own running
+    // time; sim-time deltas between frames are kept exactly.
+    pts_offset_ns_ = std::max<std::int64_t>(running_time_ns(), 0) - pts_ns;
+  }
+  // shares the pixel memory with the other outputs; only the timestamps are per pipeline
+  GstBuffer* copy = gst_buffer_copy(static_cast<GstBuffer*>(buffer));
+  GST_BUFFER_PTS(copy) =
+      static_cast<GstClockTime>(std::max<std::int64_t>(pts_ns + *pts_offset_ns_, 0));
+  const GstFlowReturn flow = gst_app_src_push_buffer(GST_APP_SRC(as_element(appsrc_)), copy);
   if (flow != GST_FLOW_OK) {
     fail("appsrc rejected a buffer", std::chrono::steady_clock::now());
     return;
@@ -218,31 +247,15 @@ void CameraRunner::push_frame(std::span<const std::byte> pixels, std::int64_t pt
   if (pixels.empty() || branches_.empty()) {
     return;
   }
-  if (pts_offset_ns_ < 0) {
-    // Frames start arriving after the pipelines went playing, so a PTS counted from the first
-    // frame would look badly late to a clock-syncing sink such as v4l2sink. Place the first
-    // frame at the current running time; sim-time deltas between frames are kept exactly.
-    for (const auto& branch : branches_) {
-      const std::int64_t running = branch->running_time_ns();
-      if (running >= 0) {
-        pts_offset_ns_ = running;
-        break;
-      }
-    }
-    if (pts_offset_ns_ < 0) {
-      pts_offset_ns_ = 0;
-    }
-  }
   GstBuffer* buffer = gst_buffer_new_allocate(nullptr, pixels.size(), nullptr);
   if (buffer == nullptr) {
     return;
   }
   gst_buffer_fill(buffer, 0, pixels.data(), pixels.size());
-  GST_BUFFER_PTS(buffer) = static_cast<GstClockTime>(pts_ns + pts_offset_ns_);
   GST_BUFFER_DURATION(buffer) =
       camera_.fps > 0.0 ? static_cast<GstClockTime>(GST_SECOND / camera_.fps) : GST_CLOCK_TIME_NONE;
   for (auto& branch : branches_) {
-    branch->push(buffer);
+    branch->push(buffer, pts_ns);
   }
   gst_buffer_unref(buffer);
   ++frames_;
@@ -253,6 +266,14 @@ void CameraRunner::poll() {
   for (auto& branch : branches_) {
     branch->poll(now);
   }
+}
+
+bool CameraRunner::set_output_enabled(std::size_t index, bool enabled) {
+  if (index >= branches_.size()) {
+    return false;
+  }
+  branches_[index]->set_enabled(enabled);
+  return true;
 }
 
 CameraStatus CameraRunner::status() {

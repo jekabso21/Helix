@@ -27,3 +27,9 @@ def test_validate_reports_errors_with_exit_code_2(tmp_path: Path) -> None:
     result = CliRunner().invoke(app, ["validate", str(bad), "--base-dir", str(REPO_ROOT)])
     assert result.exit_code == 2
     assert "nope.yaml" in result.output
+
+
+def test_latency_reports_a_missing_ring_with_exit_code_2() -> None:
+    result = CliRunner().invoke(app, ["latency", "--camera", "/dev/shm/fpvsim.absent_camera"])
+    assert result.exit_code == 2
+    assert "no frame ring" in result.output

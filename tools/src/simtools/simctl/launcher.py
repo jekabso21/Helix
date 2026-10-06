@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from simtools.config.resolver import ResolvedSession
+from simtools.proto.frame_ring import remove_stale_rings
 from simtools.sitl import SitlPortBusyError, configure_and_start
 
 SIMCORE_PRESETS = ("release", "ci", "clang", "dev")
@@ -136,6 +137,7 @@ def start_processes(
     video: subprocess.Popen[bytes] | None = None
     cameras_json = run_dir / "resolved/cameras.json"
     if simvideo is not None and resolved.video_enabled and cameras_json.exists():
+        remove_stale_rings()
         with (run_dir / "logs/simvideo.log").open("wb") as video_log:
             video = subprocess.Popen(
                 [
