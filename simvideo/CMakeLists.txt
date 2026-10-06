@@ -20,4 +20,5 @@ fpvsim_add_test(simvideo_tests
     tests/status_test.cpp
     tests/config_test.cpp
     tests/runner_test.cpp
+    tests/rtsp_test.cpp
     LIBS fpvsim::simvideo)
