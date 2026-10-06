@@ -21,8 +21,10 @@ if [[ "${1:-}" == "--video-outputs" ]]; then
     release="$(rpm -E %fedora)"
     sudo dnf install -y \
         "https://mirrors.rpmfusion.org/free/fedora/rpmfusion-free-release-${release}.noarch.rpm"
+    # Fedora packages the rtspclientsink plugin in -devel, not in the runtime package
     sudo dnf install -y gstreamer1-plugins-ugly akmod-v4l2loopback \
-        "kernel-devel-$(uname -r)" gstreamer1-plugins-bad-free gstreamer1-rtsp-server
+        "kernel-devel-$(uname -r)" gstreamer1-plugins-bad-free gstreamer1-rtsp-server \
+        gstreamer1-rtsp-server-devel
     sudo akmods --force
     # one loopback device the camera outputs can write to
     echo "options v4l2loopback devices=1 video_nr=10 card_label=fpvsim exclusive_caps=1" |
