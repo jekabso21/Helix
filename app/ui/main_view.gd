@@ -21,6 +21,8 @@ var _motor_values: Array[Label] = []
 @onready var _alt_chip: Label = $Frame/Stage/Hud/Row/Alt/Text
 @onready var _speed_chip: Label = $Frame/Stage/Hud/Row/Speed/Text
 @onready var _wind_chip: Label = $Frame/Stage/Hud/Row/Wind/Text
+@onready var _failures_chip: PanelContainer = $Frame/Stage/Hud/Row/Failures
+@onready var _failures_text: Label = $Frame/Stage/Hud/Row/Failures/Text
 @onready var _pip: Button = $Frame/Stage/Pip
 @onready var _pip_picture: TextureRect = $Frame/Stage/Pip/Picture
 @onready var _pip_name: Label = $Frame/Stage/Pip/Name/Text
@@ -207,6 +209,9 @@ func _on_telemetry(data: Dictionary) -> void:
 		var speed := Vector2(float(wind[0]), float(wind[1])).length()
 		var from_deg := fposmod(rad_to_deg(atan2(-float(wind[1]), -float(wind[0]))), 360.0)
 		_wind_chip.text = "WIND %.1f m/s %03d°" % [speed, roundi(from_deg)] if speed >= 0.05 else "WIND calm"
+	var failing: Array = data["sim"].get("active_failures", []).filter(func(f: Dictionary) -> bool: return bool(f.get("in_effect", true)))
+	_failures_chip.visible = not failing.is_empty()
+	_failures_text.text = "%d FAILURE%s" % [failing.size(), "" if failing.size() == 1 else "S"]
 	var motors: Array = data["motors"]
 	if motors.size() != _motor_bars.size() and not motors.is_empty():
 		_build_motors(motors.size())

@@ -24,6 +24,7 @@ func _initialize() -> void:
 	_test_controller_does_not_drive_the_ui()
 	await _test_environment_tab()
 	_test_world_cameras_follow_the_drone()
+	await _test_failures_tab()
 	await _test_camera_popout_mirrors_the_dock()
 	await _test_osd_overlay_takes_the_running_session()
 	print("%d checks, %d failures" % [checks, failures])
@@ -516,3 +517,31 @@ func _test_world_cameras_follow_the_drone() -> void:
 	var rig: Node = world.get_node("CameraRig")
 	check(rig.drone_path == NodePath("../Drone"), "the rig keeps its drone path, got '%s'" % rig.drone_path)
 	world.free()
+
+
+## The Failures tab: one row of buttons per motor, an active list that reads like the request
+func _test_failures_tab() -> void:
+	var script: Variant = load("res://ui/failures_panel.gd")
+	var prop := {"failure_id": 3, "type": "prop_damage", "target": {"motor": 2}, "params": {"thrust_loss": 0.3, "vibration_scale": 10.0}, "start_s": 20.0, "end_s": 24.0, "in_effect": true}
+	check(script.describe(prop, 21.5) == "#3 Prop M2 -30 % ×10 · 2.5 s left", "prop line, got %s" % script.describe(prop, 21.5))
+	var bias := {"failure_id": 4, "type": "imu_bias", "target": {"sensor": "gyro", "axis": "x"}, "params": {"step": deg_to_rad(30.0)}, "start_s": 5.0, "end_s": null, "in_effect": true}
+	check(script.describe(bias, 6.0) == "#4 Bias gyro x +30 °/s", "gyro bias line, got %s" % script.describe(bias, 6.0))
+	var later := {"failure_id": 5, "type": "baro_stuck", "target": {}, "params": {}, "start_s": 40.0, "end_s": null, "in_effect": false}
+	check(script.describe(later, 38.0) == "#5 Baro stuck · in 2.0 s", "scheduled line, got %s" % script.describe(later, 38.0))
+
+	var tab: Node = load("res://ui/failures_panel.tscn").instantiate()
+	await _add_to_root(tab)
+	var panel: Node = tab.get_node("Pad/Failures")
+	check(panel._motors.get_child_count() == 4 and panel._motors.get_child(0).get_child_count() == 5, "a label and four buttons per motor")
+	panel._on_status({"state": "idle"})
+	check(panel._buttons.all(func(b: Button) -> bool: return b.disabled), "nothing to inject without a session")
+	panel._on_status({"state": "running"})
+	check(not panel._buttons.any(func(b: Button) -> bool: return b.disabled), "everything can be injected in a session")
+	panel._render_active([prop, bias])
+	await process_frame
+	check(panel._active.get_child_count() == 2 and panel._active_meta.text == "2 active", "one row with a Clear button per active failure")
+	panel._sensor.select(1)
+	panel._render_bias_unit()
+	var request: Dictionary = panel._bias_request()
+	check(request["sensor"] == "accel" and request.has("step_mps2") and not request.has("step_dps"), "an accelerometer bias is asked in m/s², got %s" % request)
+	tab.queue_free()

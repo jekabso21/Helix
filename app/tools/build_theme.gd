@@ -330,6 +330,7 @@ func _panels() -> void:
 	_panel("Row", _box(Color(0, 0, 0, 0), DIVIDER, 0, 10, 6))
 	_panel("CodeBox", _box(SURFACE, DIVIDER, 0, 8, 6))
 	_panel("Chip", _box(CHIP, Color(0, 0, 0, 0), 0, 8, 3))
+	_panel("ChipAlert", _box(Color(ERROR, 0.85), Color(0, 0, 0, 0), 0, 8, 3))
 	_panel("Tag", _box(N200, Color(0, 0, 0, 0), 3, 10, 3))
 	_panel("TagAccent", _box(A100, Color(0, 0, 0, 0), 3, 10, 3))
 	_panel("TagArmed", _box(A200, Color(0, 0, 0, 0), 3, 10, 3))

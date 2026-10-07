@@ -136,6 +136,17 @@ layout_mode = 2
 theme_type_variation = &"ChipText"
 text = "NO STATE"
 
+[node name="Failures" type="PanelContainer" parent="Frame/Stage/Hud/Row"]
+visible = false
+layout_mode = 2
+mouse_filter = 2
+theme_type_variation = &"ChipAlert"
+
+[node name="Text" type="Label" parent="Frame/Stage/Hud/Row/Failures"]
+layout_mode = 2
+theme_type_variation = &"ChipText"
+text = "FAILURES"
+
 [node name="Spacer" type="Control" parent="Frame/Stage/Hud/Row"]
 layout_mode = 2
 size_flags_horizontal = 3

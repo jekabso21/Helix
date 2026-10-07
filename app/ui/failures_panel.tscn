@@ -1,0 +1,105 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://ui/failures_panel.gd" id="1"]
+
+[node name="Failures" type="ScrollContainer"]
+size_flags_horizontal = 3
+size_flags_vertical = 3
+horizontal_scroll_mode = 0
+
+[node name="Pad" type="MarginContainer" parent="."]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_type_variation = &"Pad"
+
+[node name="Failures" type="VBoxContainer" parent="Pad"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_type_variation = &"Sections"
+script = ExtResource("1")
+
+[node name="Active" type="VBoxContainer" parent="Pad/Failures"]
+layout_mode = 2
+theme_type_variation = &"Section"
+[node name="Head" type="HBoxContainer" parent="Pad/Failures/Active"]
+layout_mode = 2
+theme_type_variation = &"Gap8"
+[node name="Title" type="Label" parent="Pad/Failures/Active/Head"]
+layout_mode = 2
+theme_type_variation = &"Kicker"
+text = "ACTIVE"
+[node name="Meta" type="Label" parent="Pad/Failures/Active/Head"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_type_variation = &"MonoMuted"
+horizontal_alignment = 2
+text = "none"
+[node name="ClearAll" type="Button" parent="Pad/Failures/Active/Head"]
+layout_mode = 2
+theme_type_variation = &"SmallButton"
+text = "Clear all"
+[node name="Rows" type="VBoxContainer" parent="Pad/Failures/Active"]
+layout_mode = 2
+theme_type_variation = &"Tight"
+[node name="Motors" type="VBoxContainer" parent="Pad/Failures"]
+layout_mode = 2
+theme_type_variation = &"Section"
+[node name="Title" type="Label" parent="Pad/Failures/Motors"]
+layout_mode = 2
+theme_type_variation = &"Kicker"
+text = "MOTORS"
+[node name="Rows" type="VBoxContainer" parent="Pad/Failures/Motors"]
+layout_mode = 2
+theme_type_variation = &"Tight"
+[node name="Params" type="VBoxContainer" parent="Pad/Failures/Motors"]
+layout_mode = 2
+theme_type_variation = &"Tight"
+[node name="Battery" type="VBoxContainer" parent="Pad/Failures"]
+layout_mode = 2
+theme_type_variation = &"Section"
+[node name="Title" type="Label" parent="Pad/Failures/Battery"]
+layout_mode = 2
+theme_type_variation = &"Kicker"
+text = "BATTERY"
+[node name="Sensors" type="VBoxContainer" parent="Pad/Failures"]
+layout_mode = 2
+theme_type_variation = &"Section"
+[node name="Title" type="Label" parent="Pad/Failures/Sensors"]
+layout_mode = 2
+theme_type_variation = &"Kicker"
+text = "SENSORS"
+[node name="Pick" type="HBoxContainer" parent="Pad/Failures/Sensors"]
+layout_mode = 2
+theme_type_variation = &"Gap6"
+[node name="Sensor" type="OptionButton" parent="Pad/Failures/Sensors/Pick"]
+layout_mode = 2
+size_flags_horizontal = 3
+fit_to_longest_item = false
+theme_type_variation = &"SmallOption"
+[node name="Axis" type="OptionButton" parent="Pad/Failures/Sensors/Pick"]
+layout_mode = 2
+size_flags_horizontal = 3
+fit_to_longest_item = false
+theme_type_variation = &"SmallOption"
+[node name="Buttons" type="HFlowContainer" parent="Pad/Failures/Sensors"]
+layout_mode = 2
+theme_type_variation = &"HFlow4"
+[node name="Params" type="VBoxContainer" parent="Pad/Failures/Sensors"]
+layout_mode = 2
+theme_type_variation = &"Tight"
+[node name="Timing" type="VBoxContainer" parent="Pad/Failures"]
+layout_mode = 2
+theme_type_variation = &"Section"
+[node name="Title" type="Label" parent="Pad/Failures/Timing"]
+layout_mode = 2
+theme_type_variation = &"Kicker"
+text = "TIMING"
+[node name="Hint" type="Label" parent="Pad/Failures/Timing"]
+layout_mode = 2
+theme_type_variation = &"Hint"
+autowrap_mode = 3
+text = "Every button injects for this long; 0 s keeps the failure until it is cleared."
+[node name="Message" type="Label" parent="Pad/Failures"]
+layout_mode = 2
+theme_type_variation = &"Hint"
+autowrap_mode = 3

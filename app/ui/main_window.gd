@@ -38,6 +38,12 @@ func _ready() -> void:
 	var args := OS.get_cmdline_user_args()
 	if args.has("--camera-only"):
 		_toggle_camera_only.call_deferred()
+	# --tab <name> opens a left dock tab, for demos and screenshots
+	var tab_index := args.find("--tab")
+	if tab_index >= 0 and tab_index + 1 < args.size():
+		var page := Array(_left_dock.page_names()).find(args[tab_index + 1])
+		if page >= 0:
+			_left_dock.select_page.call_deferred(page)
 	# --view 1..6 picks a main view mode, the same numbers as the keys
 	var view_index := args.find("--view")
 	if view_index >= 0 and view_index + 1 < args.size():

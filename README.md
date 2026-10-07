@@ -47,6 +47,7 @@ CMake presets: `dev` (GCC, Debug, ASan and UBSan), `clang` (Clang, warnings as e
 ./scripts/run_app.sh -- --attach                            # GUI attached to a running simctl run
 ./scripts/run_app.sh -- --screenshot /tmp/app.png           # save the window content and quit
 ./scripts/run_app.sh -- --ui-scale 1.25                     # start at another UI scale (Ctrl + / Ctrl - / Ctrl 0 in the app)
+./scripts/run_app.sh -- --tab Failures                      # open a left dock tab (Input, Drone, Environment, Failures, Scenario)
 uv run --project tools simctl validate configs/sessions/ci_hover.yaml
 uv run --project tools simctl run configs/sessions/ci_hover.yaml --headless   # hover test flight, run dir in runs/
 uv run --project tools python tools/spikes/spin_motors.py   # arm Betaflight SITL, read motors
