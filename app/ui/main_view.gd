@@ -20,6 +20,7 @@ var _motor_values: Array[Label] = []
 @onready var _armed_chip: Label = $Frame/Stage/Hud/Row/Armed/Text
 @onready var _alt_chip: Label = $Frame/Stage/Hud/Row/Alt/Text
 @onready var _speed_chip: Label = $Frame/Stage/Hud/Row/Speed/Text
+@onready var _wind_chip: Label = $Frame/Stage/Hud/Row/Wind/Text
 @onready var _pip: Button = $Frame/Stage/Pip
 @onready var _pip_picture: TextureRect = $Frame/Stage/Pip/Picture
 @onready var _pip_name: Label = $Frame/Stage/Pip/Name/Text
@@ -33,6 +34,10 @@ func _ready() -> void:
 	SimLink.telemetry.connect(_on_telemetry)
 	_build_motors(4)
 	_rebuild_tabs()
+	var arrow := Node3D.new()
+	arrow.set_script(preload("res://scripts/wind_arrow.gd"))
+	arrow.name = "WindArrow"
+	$Frame/Stage/Viewport/SubViewport/World.add_child(arrow)
 	resized.connect(_fit_motor_columns)
 	_container.set_anchors_preset(Control.PRESET_TOP_LEFT)
 	_stage.resized.connect(_fit_viewport)
@@ -196,6 +201,12 @@ func _on_telemetry(data: Dictionary) -> void:
 	var flight: Dictionary = data["flight"]
 	_alt_chip.text = "ALT %.2f m" % float(flight["altitude_agl_m"])
 	_speed_chip.text = "SPD %.1f m/s" % float(flight["ground_speed_mps"])
+	var environment: Variant = data.get("environment")
+	if environment is Dictionary:
+		var wind: Array = (environment as Dictionary)["wind_ned_mps"]
+		var speed := Vector2(float(wind[0]), float(wind[1])).length()
+		var from_deg := fposmod(rad_to_deg(atan2(-float(wind[1]), -float(wind[0]))), 360.0)
+		_wind_chip.text = "WIND %.1f m/s %03d°" % [speed, roundi(from_deg)] if speed >= 0.05 else "WIND calm"
 	var motors: Array = data["motors"]
 	if motors.size() != _motor_bars.size() and not motors.is_empty():
 		_build_motors(motors.size())

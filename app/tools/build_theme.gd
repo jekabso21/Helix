@@ -46,6 +46,7 @@ func _initialize() -> void:
 	_labels()
 	_buttons()
 	_inputs()
+	_sliders()
 	_panels()
 	_scroll_and_separators()
 	_containers()
@@ -305,6 +306,22 @@ func _inputs() -> void:
 	theme.set_stylebox("background", "ProgressBar", _box(N200, Color(0, 0, 0, 0), 0, 0, 0))
 	theme.set_stylebox("fill", "ProgressBar", _box(ACCENT, Color(0, 0, 0, 0), 0, 0, 0))
 	theme.set_color("font_color", "ProgressBar", TEXT)
+
+
+func _sliders() -> void:
+	var track := StyleBoxFlat.new()
+	track.bg_color = N300
+	track.content_margin_top = 2
+	track.content_margin_bottom = 2
+	var fill := StyleBoxFlat.new()
+	fill.bg_color = ACCENT
+	fill.content_margin_top = 2
+	fill.content_margin_bottom = 2
+	var fill_hover := fill.duplicate() as StyleBoxFlat
+	fill_hover.bg_color = A600
+	theme.set_stylebox("slider", "HSlider", track)
+	theme.set_stylebox("grabber_area", "HSlider", fill)
+	theme.set_stylebox("grabber_area_highlight", "HSlider", fill_hover)
 
 
 func _panels() -> void:

@@ -1,4 +1,4 @@
-[gd_scene load_steps=9 format=3]
+[gd_scene load_steps=10 format=3]
 
 [ext_resource type="Script" path="res://ui/main_window.gd" id="1"]
 [ext_resource type="PackedScene" path="res://ui/placeholder_panel.tscn" id="2"]
@@ -8,6 +8,7 @@
 [ext_resource type="PackedScene" path="res://ui/telemetry_panel.tscn" id="6"]
 [ext_resource type="PackedScene" path="res://ui/input_panel.tscn" id="7"]
 [ext_resource type="PackedScene" path="res://ui/drone_panel.tscn" id="8"]
+[ext_resource type="PackedScene" path="res://ui/environment_panel.tscn" id="10"]
 
 [node name="MainWindow" type="Control"]
 layout_mode = 3
@@ -150,9 +151,8 @@ layout_mode = 2
 [node name="Drone" parent="Layout/Body/LeftDock" instance=ExtResource("8")]
 layout_mode = 2
 
-[node name="Environment" parent="Layout/Body/LeftDock" instance=ExtResource("2")]
+[node name="Environment" parent="Layout/Body/LeftDock" instance=ExtResource("10")]
 layout_mode = 2
-body = "Wind, gusts, air temperature and pressure, time of day, fog, rain and snow. Not available yet."
 
 [node name="Failures" parent="Layout/Body/LeftDock" instance=ExtResource("2")]
 layout_mode = 2

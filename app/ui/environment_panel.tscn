@@ -1,0 +1,215 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://ui/environment_panel.gd" id="1"]
+
+[node name="Environment" type="ScrollContainer"]
+size_flags_horizontal = 3
+size_flags_vertical = 3
+horizontal_scroll_mode = 0
+
+[node name="Pad" type="MarginContainer" parent="."]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_type_variation = &"Pad"
+
+[node name="Environment" type="VBoxContainer" parent="Pad"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_type_variation = &"Sections"
+script = ExtResource("1")
+
+[node name="Wind" type="VBoxContainer" parent="Pad/Environment"]
+layout_mode = 2
+theme_type_variation = &"Section"
+
+[node name="Head" type="HBoxContainer" parent="Pad/Environment/Wind"]
+layout_mode = 2
+
+[node name="Title" type="Label" parent="Pad/Environment/Wind/Head"]
+layout_mode = 2
+theme_type_variation = &"Kicker"
+text = "WIND"
+
+[node name="Live" type="Label" parent="Pad/Environment/Wind/Head"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_type_variation = &"MonoMuted"
+horizontal_alignment = 2
+clip_text = true
+text = "no session"
+
+[node name="Speed" type="HBoxContainer" parent="Pad/Environment/Wind"]
+layout_mode = 2
+theme_type_variation = &"Gap10"
+
+[node name="Label" type="Label" parent="Pad/Environment/Wind/Speed"]
+custom_minimum_size = Vector2(64, 0)
+layout_mode = 2
+theme_type_variation = &"Muted"
+text = "Speed"
+
+[node name="Slider" type="HSlider" parent="Pad/Environment/Wind/Speed"]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 4
+min_value = 0
+max_value = 25
+step = 0.5
+value = 0
+
+[node name="Value" type="Label" parent="Pad/Environment/Wind/Speed"]
+custom_minimum_size = Vector2(76, 0)
+layout_mode = 2
+theme_type_variation = &"Mono"
+horizontal_alignment = 2
+
+[node name="From" type="HBoxContainer" parent="Pad/Environment/Wind"]
+layout_mode = 2
+theme_type_variation = &"Gap10"
+
+[node name="Label" type="Label" parent="Pad/Environment/Wind/From"]
+custom_minimum_size = Vector2(64, 0)
+layout_mode = 2
+theme_type_variation = &"Muted"
+text = "From"
+
+[node name="Slider" type="HSlider" parent="Pad/Environment/Wind/From"]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 4
+min_value = 0
+max_value = 355
+step = 5
+value = 270
+
+[node name="Value" type="Label" parent="Pad/Environment/Wind/From"]
+custom_minimum_size = Vector2(76, 0)
+layout_mode = 2
+theme_type_variation = &"Mono"
+horizontal_alignment = 2
+
+[node name="Hint" type="Label" parent="Pad/Environment/Wind"]
+layout_mode = 2
+theme_type_variation = &"Hint"
+autowrap_mode = 3
+text = "The direction the wind comes from: 270° is a westerly that carries the drone east."
+
+[node name="Turbulence" type="VBoxContainer" parent="Pad/Environment"]
+layout_mode = 2
+theme_type_variation = &"Section"
+
+[node name="Head" type="HBoxContainer" parent="Pad/Environment/Turbulence"]
+layout_mode = 2
+
+[node name="Title" type="Label" parent="Pad/Environment/Turbulence/Head"]
+layout_mode = 2
+theme_type_variation = &"Kicker"
+text = "TURBULENCE"
+
+[node name="Level" type="OptionButton" parent="Pad/Environment/Turbulence"]
+layout_mode = 2
+fit_to_longest_item = false
+
+[node name="Hint" type="Label" parent="Pad/Environment/Turbulence"]
+layout_mode = 2
+theme_type_variation = &"Hint"
+autowrap_mode = 3
+text = "Dryden turbulence at the MIL-F-8785C low-altitude intensities, around the mean wind."
+
+[node name="Gust" type="VBoxContainer" parent="Pad/Environment"]
+layout_mode = 2
+theme_type_variation = &"Section"
+
+[node name="Head" type="HBoxContainer" parent="Pad/Environment/Gust"]
+layout_mode = 2
+
+[node name="Title" type="Label" parent="Pad/Environment/Gust/Head"]
+layout_mode = 2
+theme_type_variation = &"Kicker"
+text = "GUST"
+
+[node name="Strength" type="HBoxContainer" parent="Pad/Environment/Gust"]
+layout_mode = 2
+theme_type_variation = &"Gap10"
+
+[node name="Label" type="Label" parent="Pad/Environment/Gust/Strength"]
+custom_minimum_size = Vector2(64, 0)
+layout_mode = 2
+theme_type_variation = &"Muted"
+text = "Strength"
+
+[node name="Slider" type="HSlider" parent="Pad/Environment/Gust/Strength"]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 4
+min_value = 0
+max_value = 15
+step = 0.5
+value = 5
+
+[node name="Value" type="Label" parent="Pad/Environment/Gust/Strength"]
+custom_minimum_size = Vector2(76, 0)
+layout_mode = 2
+theme_type_variation = &"Mono"
+horizontal_alignment = 2
+
+[node name="Duration" type="HBoxContainer" parent="Pad/Environment/Gust"]
+layout_mode = 2
+theme_type_variation = &"Gap10"
+
+[node name="Label" type="Label" parent="Pad/Environment/Gust/Duration"]
+custom_minimum_size = Vector2(64, 0)
+layout_mode = 2
+theme_type_variation = &"Muted"
+text = "Duration"
+
+[node name="Slider" type="HSlider" parent="Pad/Environment/Gust/Duration"]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 4
+min_value = 0.5
+max_value = 5
+step = 0.1
+value = 2
+
+[node name="Value" type="Label" parent="Pad/Environment/Gust/Duration"]
+custom_minimum_size = Vector2(76, 0)
+layout_mode = 2
+theme_type_variation = &"Mono"
+horizontal_alignment = 2
+
+[node name="From" type="HBoxContainer" parent="Pad/Environment/Gust"]
+layout_mode = 2
+theme_type_variation = &"Gap10"
+
+[node name="Label" type="Label" parent="Pad/Environment/Gust/From"]
+custom_minimum_size = Vector2(64, 0)
+layout_mode = 2
+theme_type_variation = &"Muted"
+text = "From"
+
+[node name="Slider" type="HSlider" parent="Pad/Environment/Gust/From"]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 4
+min_value = 0
+max_value = 355
+step = 5
+value = 270
+
+[node name="Value" type="Label" parent="Pad/Environment/Gust/From"]
+custom_minimum_size = Vector2(76, 0)
+layout_mode = 2
+theme_type_variation = &"Mono"
+horizontal_alignment = 2
+
+[node name="Fire" type="Button" parent="Pad/Environment/Gust"]
+layout_mode = 2
+size_flags_horizontal = 8
+theme_type_variation = &"PrimaryButton"
+text = "Gust now"
+
+[node name="Message" type="Label" parent="Pad/Environment"]
+layout_mode = 2
+theme_type_variation = &"Hint"
+autowrap_mode = 3

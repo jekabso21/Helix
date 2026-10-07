@@ -22,6 +22,8 @@ func _initialize() -> void:
 	_test_window_scaling()
 	_test_input_profile_detection()
 	_test_controller_does_not_drive_the_ui()
+	await _test_environment_tab()
+	_test_world_cameras_follow_the_drone()
 	await _test_camera_popout_mirrors_the_dock()
 	await _test_osd_overlay_takes_the_running_session()
 	print("%d checks, %d failures" % [checks, failures])
@@ -474,3 +476,43 @@ func _test_controller_does_not_drive_the_ui() -> void:
 	check(not has_joypad.call(), "no action reacts to a gamepad any more")
 	var keys := InputMap.action_get_events("ui_accept").filter(func(e: InputEvent) -> bool: return e is InputEventKey)
 	check(not keys.is_empty(), "keyboard navigation is kept")
+
+
+## The Environment tab shows the wind in the units of the environment file and starts from it
+func _test_environment_tab() -> void:
+	var script: Variant = load("res://ui/environment_panel.gd")
+	check(script.compass(0.0) == "N" and script.compass(270.0) == "W" and script.compass(359.0) == "N" and script.compass(135.0) == "SE", "compass names")
+	# a westerly moves air east: NED (0, 5, 0)
+	var westerly: Vector2 = script.speed_and_from([0.0, 5.0, 0.0])
+	check(absf(westerly.x - 5.0) < 1e-6 and absf(westerly.y - 270.0) < 1e-6, "wind vector back to speed and direction, got %s" % westerly)
+	var northerly: Vector2 = script.speed_and_from([-3.0, 0.0, 0.0])
+	check(absf(northerly.y) < 1e-6, "a northerly comes from 0 deg, got %s" % northerly)
+	check(script.speed_and_from([0.0, 0.0, 0.0]) == Vector2.ZERO, "calm has no direction")
+	var arrow: Variant = load("res://scripts/wind_arrow.gd")
+	check(absf(arrow.length_for(5.0) - 0.6) < 1e-6 and arrow.length_for(100.0) == 2.5, "the wind arrow grows with speed up to a cap")
+
+	var dir := "user://env_tab_test"
+	DirAccess.make_dir_recursive_absolute(dir + "/resolved")
+	_write_json(dir + "/resolved/session.json", {"wind": {
+		"mean_speed_mps": 6.5, "mean_from_rad": deg_to_rad(225.0), "turbulence_w20_mps": 15.4,
+		"turbulence_intensity": "moderate", "profile": {}, "gusts": [],
+	}})
+	var tab: Node = load("res://ui/environment_panel.tscn").instantiate()
+	await _add_to_root(tab)
+	var panel: Node = tab.get_node("Pad/Environment")
+	panel._on_status({"state": "running", "run_dir": ProjectSettings.globalize_path(dir)})
+	check(absf(panel._speed.value - 6.5) < 1e-6 and absf(panel._from.value - 225.0) < 1e-6, "sliders start at the session's wind")
+	check(panel._turbulence.get_item_text(panel._turbulence.selected) == "moderate", "and its turbulence level")
+	check(panel._send_at < 0.0, "loading the session's wind does not send it back")
+	check(panel._from_value.text == "225° SW", "direction label, got %s" % panel._from_value.text)
+	panel._on_status({"state": "idle"})
+	check(not panel._speed.editable and panel._gust_button.disabled, "nothing to change without a session")
+	tab.queue_free()
+
+
+## Every world camera mode aims at the drone node; an empty path would aim them all at the spawn
+func _test_world_cameras_follow_the_drone() -> void:
+	var world: Node = load("res://scenes/world.tscn").instantiate()
+	var rig: Node = world.get_node("CameraRig")
+	check(rig.drone_path == NodePath("../Drone"), "the rig keeps its drone path, got '%s'" % rig.drone_path)
+	world.free()
