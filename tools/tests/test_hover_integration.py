@@ -271,3 +271,92 @@ def test_betaflight_sees_the_simulated_rotor_speeds(tmp_path: Path) -> None:
         zip(observer.debug_rpm[:4], observer.sim_rpm, strict=True)
     ):
         assert abs(seen - simulated) < 0.05 * simulated, (motor, seen, simulated)
+
+
+class WindChanger(threading.Thread):
+    """Raises the wind through the control API partway through the flight."""
+
+    def __init__(self, at_sim_s: float, speed_mps: float) -> None:
+        super().__init__(daemon=True)
+        self.at_sim_s = at_sim_s
+        self.speed_mps = speed_mps
+        self.error: str | None = None
+        self.applied_at_ns = -1
+        self.wind_after: list[float] = []
+
+    def run(self) -> None:
+        try:
+            client = None
+            deadline = time.monotonic() + 30.0
+            while client is None and time.monotonic() < deadline:
+                try:
+                    client = ControlClient(timeout_s=3.0)
+                except OSError:
+                    time.sleep(0.2)
+            assert client is not None, "control API never came up"
+            with client:
+                while client.request("get_state")["sim_time_ns"] < self.at_sim_s * 1e9:
+                    time.sleep(0.05)
+                result = client.request(
+                    "set_env",
+                    {"wind": {"mean_speed_mps": self.speed_mps, "mean_from_rad": 1.5 * math.pi}},
+                )
+                self.applied_at_ns = result["applied_at_ns"]
+                time.sleep(0.5)
+                sub = client.request("subscribe", {"topic": "telemetry", "rate_hz": 5})
+                events = list(client.events(1.0))
+                client.request("unsubscribe", {"subscription_id": sub["subscription_id"]})
+                self.wind_after = events[-1]["data"]["environment"]["wind_ned_mps"]
+        except Exception as error:
+            self.error = f"{type(error).__name__}: {error}"
+
+
+@pytest.mark.skipif(not SITL_BINARY.exists(), reason="Betaflight SITL not built")
+@pytest.mark.skipif(
+    not any(
+        (REPO_ROOT / "build" / p / "simcore/simcore").exists()
+        for p in ("release", "ci", "clang", "dev")
+    ),
+    reason="simcore not built",
+)
+def test_a_steady_wind_carries_the_hovering_drone_downwind(tmp_path: Path) -> None:
+    """Altitude hold keeps the height but not the position, so the drone drifts with the air
+    and settles at the wind speed, where the drag is zero. On the way it overshoots: the drag
+    acceleration reads as tilt in Betaflight's accelerometer-aided attitude estimate, so angle
+    mode rolls a few degrees downwind (sticks stay centred; seen 3.4 deg at 1 m/s^2)."""
+    if sitl_port_busy():
+        pytest.skip("a Betaflight SITL is already running on TCP 5761")
+    environment = load_yaml(REPO_ROOT / "configs/environments/calm_15c.yaml")
+    environment["wind"] = {"mean": {"speed_mps": 4.0, "from_deg": 270.0}}
+    (tmp_path / "windy.yaml").write_text(yaml.safe_dump(environment))
+    session = load_yaml(REPO_ROOT / "configs/sessions/ci_hover.yaml")
+    session["name"] = "ci_hover_windy"
+    session["environment"] = str(tmp_path / "windy.yaml")
+    (tmp_path / "session.yaml").write_text(yaml.safe_dump(session))
+    resolved = resolve_session(tmp_path / "session.yaml", REPO_ROOT)
+    run_dir = write_run_directory(resolved, tmp_path, REPO_ROOT, ["pytest"])
+    changer = WindChanger(at_sim_s=26.0, speed_mps=8.0)
+    changer.start()
+    result = run_headless(resolved, run_dir, find_simcore(REPO_ROOT))
+    changer.join(timeout=10.0)
+    assert result.exit_code == 0, (run_dir / "logs/simcore.log").read_text()
+    assert changer.error is None, changer.error
+    assert changer.applied_at_ns >= 26e9
+    assert changer.wind_after[1] == pytest.approx(8.0, abs=1e-6)  # blowing east
+
+    with (run_dir / "data/truth.csv").open() as f:
+        rows = [r for r in csv.DictReader(f) if float(r["t_s"]) >= WINDOW_START_S]
+    assert rows and all(r["crashed"] == "0" for r in rows)
+    east = [float(r["ve_mps"]) for r in rows]
+    north = [float(r["vn_mps"]) for r in rows]
+    heights = [-float(r["down_m"]) for r in rows]
+
+    def mean_east(start_s: float, end_s: float) -> float:
+        picked = [v for r, v in zip(rows, east, strict=True) if start_s <= float(r["t_s"]) < end_s]
+        return sum(picked) / len(picked)
+
+    assert mean_east(24.0, 26.0) == pytest.approx(4.0, abs=0.4)  # settled at the 4 m/s wind
+    assert mean_east(34.0, 36.0) == pytest.approx(8.0, abs=1.2)  # carried by the raised wind
+    assert max(east) <= 8.0 * 1.25, max(east)  # the overshoot stays bounded
+    assert max(abs(v) for v in north) < 0.5, max(abs(v) for v in north)
+    assert max(abs(h - TARGET_HEIGHT_M) for h in heights) <= 1.0, (min(heights), max(heights))

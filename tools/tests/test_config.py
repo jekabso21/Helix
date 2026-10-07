@@ -205,3 +205,97 @@ def test_video_can_be_switched_off_in_the_session(tmp_path: Path) -> None:
     session["video"] = {"enabled": False}
     (tmp_path / "off.yaml").write_text(yaml.safe_dump(session))
     assert resolve_session(tmp_path / "off.yaml", REPO_ROOT).video_enabled is False
+
+
+def test_calm_environment_resolves_to_still_air() -> None:
+    wind = resolve_session(SESSION, REPO_ROOT).session["wind"]
+    assert wind == {
+        "mean_speed_mps": 0.0,
+        "mean_from_rad": 0.0,
+        "profile": {"log_law": False, "roughness_m": 0.1, "reference_height_m": 10.0},
+        "turbulence_w20_mps": 0.0,
+        "turbulence_intensity": "none",
+        "gusts": [],
+    }
+
+
+def test_windy_environment_resolves_to_si(tmp_path: Path) -> None:
+    environment = tmp_path / "windy.yaml"
+    environment.write_text(
+        "schema_version: 1\n"
+        "wind:\n"
+        "  mean: { speed_mps: 6, from_deg: 270 }\n"
+        "  profile: { type: log, z0_m: 0.05, ref_height_m: 10 }\n"
+        "  turbulence: { model: dryden, intensity: moderate }\n"
+        "  gusts: [{ at_s: 12, duration_s: 2, amplitude_mps: 5, from_deg: 90 }]\n"
+    )
+    session = tmp_path / "s.yaml"
+    session.write_text(
+        SESSION.read_text().replace("configs/environments/calm_15c.yaml", str(environment))
+    )
+    wind = resolve_session(session, REPO_ROOT).session["wind"]
+    assert wind["mean_speed_mps"] == 6.0
+    assert wind["mean_from_rad"] == pytest.approx(math.radians(270.0))
+    assert wind["profile"] == {"log_law": True, "roughness_m": 0.05, "reference_height_m": 10.0}
+    # MIL-F-8785C: moderate turbulence is a 30 kt wind at 20 ft
+    assert wind["turbulence_w20_mps"] == pytest.approx(30.0 * 1852.0 / 3600.0)
+    assert wind["gusts"] == [
+        {
+            "start_s": 12.0,
+            "duration_s": 2.0,
+            "amplitude_mps": 5.0,
+            "from_rad": pytest.approx(math.radians(90.0)),
+        }
+    ]
+
+
+def test_wind_settings_are_checked(tmp_path: Path) -> None:
+    from simtools.config.schemas import EnvironmentConfig
+
+    with pytest.raises(ValidationError):
+        EnvironmentConfig.model_validate({"schema_version": 1, "wind": {"mean": {"speed_mps": -1}}})
+    with pytest.raises(ValidationError):
+        EnvironmentConfig.model_validate(
+            {"schema_version": 1, "wind": {"turbulence": {"intensity": "hurricane"}}}
+        )
+    with pytest.raises(ValidationError, match="ref_height_m"):
+        EnvironmentConfig.model_validate(
+            {
+                "schema_version": 1,
+                "wind": {"profile": {"type": "log", "z0_m": 2, "ref_height_m": 1}},
+            }
+        )
+    many = [{"at_s": i, "duration_s": 1, "amplitude_mps": 1, "from_deg": 0} for i in range(9)]
+    with pytest.raises(ValidationError, match="8"):
+        EnvironmentConfig.model_validate({"schema_version": 1, "wind": {"gusts": many}})
+
+
+def test_a_live_wind_change_is_converted_to_si() -> None:
+    from simtools.config.resolver import env_update_message
+    from simtools.config.schemas import EnvUpdateConfig
+
+    message = env_update_message(
+        EnvUpdateConfig.model_validate(
+            {
+                "wind": {
+                    "mean": {"speed_mps": 8, "from_deg": 180},
+                    "turbulence": {"intensity": "light"},
+                },
+                "gust": {"duration_s": 1.5, "amplitude_mps": 4, "from_deg": 90},
+            }
+        )
+    )
+    assert message["wind"]["mean_speed_mps"] == 8.0
+    assert message["wind"]["mean_from_rad"] == pytest.approx(math.pi)
+    assert message["wind"]["turbulence_w20_mps"] == pytest.approx(15.0 * 1852.0 / 3600.0)
+    assert message["gust"] == {
+        "duration_s": 1.5,
+        "amplitude_mps": 4.0,
+        "from_rad": pytest.approx(math.pi / 2.0),
+    }
+    only_gust = env_update_message(
+        EnvUpdateConfig.model_validate({"gust": {"duration_s": 2, "amplitude_mps": 3}})
+    )
+    assert "wind" not in only_gust
+    with pytest.raises(ValidationError, match="nothing"):
+        EnvUpdateConfig.model_validate({})

@@ -15,11 +15,12 @@ from simtools.api.client import ApiError, ControlClient
 from simtools.config.resolver import (
     ConfigError,
     ResolvedSession,
+    env_update_message,
     load_yaml,
     resolve_session,
     write_run_directory,
 )
-from simtools.config.schemas import InputMappingConfig
+from simtools.config.schemas import EnvUpdateConfig, InputMappingConfig
 from simtools.input_devices import joystick_names
 from simtools.modelc import compile_drone, export_glb, to_json
 from simtools.modelc.overrides import OverrideError, apply_overrides, summary
@@ -387,6 +388,25 @@ class Supervisor:
         with self._lock:
             return {"cameras": [self._video_status[name] for name in sorted(self._video_status)]}
 
+    def set_env(self, params: Json) -> Json:
+        """Changes the running session's wind; params use the environment file's units."""
+        try:
+            update = EnvUpdateConfig.model_validate(params)
+        except ValidationError as error:
+            raise ConfigError(f"invalid environment change: {error}") from error
+        with self._lock:
+            resolved = self._resolved
+            running = self._state == "running"
+        if resolved is None or not running:
+            raise LaunchError("no session is running")
+        api = resolved.session["control_api"]
+        try:
+            with ControlClient(api["host"], api["port"]) as client:
+                result = client.request("set_env", env_update_message(update))
+        except (OSError, ApiError) as error:
+            raise LaunchError(f"set_env failed: {error}") from error
+        return {"applied_at_ns": result.get("applied_at_ns")}
+
     def set_output_enabled(self, camera: str, index: int, enabled: bool) -> Json:
         """Tells simvideo to turn one output of one camera off or on; the next report shows it."""
         with self._lock:
@@ -589,6 +609,8 @@ class Handler(socketserver.StreamRequestHandler):
                     str(params.get("process", "simcore")), int(params.get("lines", 50))
                 )
                 return self._ok(request_id, {"lines": lines}), None
+            if method == "set_env":
+                return self._ok(request_id, supervisor.set_env(dict(params))), None
             if method == "list_input_devices":
                 return self._ok(request_id, {"devices": joystick_names()}), None
             if method == "list_input_mappings":

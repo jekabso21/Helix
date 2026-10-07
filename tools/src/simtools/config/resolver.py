@@ -12,11 +12,15 @@ from pydantic import ValidationError
 
 from simtools.config import units
 from simtools.config.schemas import (
+    TURBULENCE_W20_KNOTS,
     CameraConfig,
     DroneConfig,
     EnvironmentConfig,
+    EnvUpdateConfig,
     InputMappingConfig,
     SessionConfig,
+    WindConfig,
+    WindProfileConfig,
 )
 from simtools.modelc.compile import compile_drone, to_json
 from simtools.modelc.gltf import export_glb
@@ -109,6 +113,54 @@ def load_drone(path: Path, base_dir: Path) -> DroneConfig:
 
 def resolve_drone(drone: DroneConfig) -> dict[str, Any]:
     return to_json(compile_drone(drone))
+
+
+def resolve_wind(wind: WindConfig) -> dict[str, Any]:
+    """Wind in SI for simcore; a missing profile is a flat one (the factor is then always 1)."""
+    profile = wind.profile or WindProfileConfig(type="log")
+    return {
+        "mean_speed_mps": wind.mean.speed_mps,
+        "mean_from_rad": units.deg_to_rad(wind.mean.from_deg),
+        "profile": {
+            "log_law": wind.profile is not None,
+            "roughness_m": profile.z0_m,
+            "reference_height_m": profile.ref_height_m,
+        },
+        "turbulence_w20_mps": units.knots_to_mps(TURBULENCE_W20_KNOTS[wind.turbulence.intensity]),
+        "turbulence_intensity": wind.turbulence.intensity,  # for display; simcore ignores it
+        "gusts": [
+            {
+                "start_s": gust.at_s,
+                "duration_s": gust.duration_s,
+                "amplitude_mps": gust.amplitude_mps,
+                "from_rad": units.deg_to_rad(gust.from_deg),
+            }
+            for gust in wind.gusts
+        ],
+    }
+
+
+def env_update_message(update: EnvUpdateConfig) -> dict[str, Any]:
+    """The control API's set_env params (SI) for a live change given in file units."""
+    message: dict[str, Any] = {}
+    if update.wind is not None:
+        wind: dict[str, Any] = {}
+        if update.wind.mean is not None:
+            wind["mean_speed_mps"] = update.wind.mean.speed_mps
+            wind["mean_from_rad"] = units.deg_to_rad(update.wind.mean.from_deg)
+        if update.wind.turbulence is not None:
+            wind["turbulence_w20_mps"] = units.knots_to_mps(
+                TURBULENCE_W20_KNOTS[update.wind.turbulence.intensity]
+            )
+        if wind:
+            message["wind"] = wind
+    if update.gust is not None:
+        message["gust"] = {
+            "duration_s": update.gust.duration_s,
+            "amplitude_mps": update.gust.amplitude_mps,
+            "from_rad": units.deg_to_rad(update.gust.from_deg),
+        }
+    return message
 
 
 def hover_throttle_us(drone: DroneConfig) -> float:
@@ -222,6 +274,7 @@ def resolve_session(session_path: Path, base_dir: Path) -> ResolvedSession:
             "ground_temperature_k": units.c_to_k(environment.atmosphere.ground_temperature_c),
             "ground_pressure_pa": units.hpa_to_pa(environment.atmosphere.ground_pressure_hpa),
         },
+        "wind": resolve_wind(environment.wind),
         "spawn": {
             "north_m": session.spawn.north_m,
             "east_m": session.spawn.east_m,

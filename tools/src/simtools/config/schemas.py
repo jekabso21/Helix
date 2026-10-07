@@ -511,6 +511,78 @@ class AtmosphereConfig(Strict):
     ground_pressure_hpa: float = 1013.25
 
 
+MAX_GUSTS = 8  # simcore keeps pending gusts in a fixed array of this size
+
+# MIL-F-8785C low-altitude intensities: the wind speed at 20 ft that sets sigma_w = 0.1 W20
+TURBULENCE_W20_KNOTS = {"none": 0.0, "light": 15.0, "moderate": 30.0, "severe": 45.0}
+
+
+class WindMeanConfig(Strict):
+    speed_mps: float = Field(default=0.0, ge=0.0)
+    from_deg: float = 0.0  # meteorological: where the wind comes from, 0 = north, clockwise
+
+
+class WindProfileConfig(Strict):
+    type: Literal["log"]
+    z0_m: float = Field(default=0.1, gt=0.0)
+    ref_height_m: float = Field(default=10.0, gt=0.0)
+
+    @model_validator(mode="after")
+    def reference_above_roughness(self) -> "WindProfileConfig":
+        if self.ref_height_m <= self.z0_m:
+            raise ValueError("ref_height_m must be above z0_m")
+        return self
+
+
+class TurbulenceConfig(Strict):
+    model: Literal["dryden"] = "dryden"
+    intensity: Literal["none", "light", "moderate", "severe"] = "none"
+
+
+class GustConfig(Strict):
+    at_s: float = Field(ge=0.0)
+    duration_s: float = Field(gt=0.0)
+    amplitude_mps: float = Field(ge=0.0)
+    from_deg: float = 0.0
+
+
+class WindConfig(Strict):
+    mean: WindMeanConfig = Field(default_factory=WindMeanConfig)
+    profile: WindProfileConfig | None = None
+    turbulence: TurbulenceConfig = Field(default_factory=TurbulenceConfig)
+    gusts: list[GustConfig] = Field(default_factory=list, max_length=MAX_GUSTS)
+
+
+class WindUpdateConfig(Strict):
+    mean: WindMeanConfig | None = None
+    turbulence: TurbulenceConfig | None = None
+
+
+class GustNowConfig(Strict):
+    """A gust that starts as soon as simcore receives it."""
+
+    duration_s: float = Field(default=2.0, gt=0.0)
+    amplitude_mps: float = Field(ge=0.0)
+    from_deg: float = 0.0
+
+
+class EnvUpdateConfig(Strict):
+    """A live environment change, in the environment file's units."""
+
+    wind: WindUpdateConfig | None = None
+    gust: GustNowConfig | None = None
+
+    @model_validator(mode="after")
+    def changes_something(self) -> "EnvUpdateConfig":
+        wind_parts = self.wind is not None and (
+            self.wind.mean is not None or self.wind.turbulence is not None
+        )
+        if not wind_parts and self.gust is None:
+            raise ValueError("nothing to change: give wind.mean, wind.turbulence or gust")
+        return self
+
+
 class EnvironmentConfig(Strict):
     schema_version: Literal[1]
     atmosphere: AtmosphereConfig = Field(default_factory=AtmosphereConfig)
+    wind: WindConfig = Field(default_factory=WindConfig)

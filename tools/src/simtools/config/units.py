@@ -25,3 +25,7 @@ def hpa_to_pa(value: float) -> float:
 
 def rpm_to_rad_per_s(value: float) -> float:
     return value * RPM_TO_RAD_PER_S
+
+
+def knots_to_mps(value: float) -> float:
+    return value * 1852.0 / 3600.0

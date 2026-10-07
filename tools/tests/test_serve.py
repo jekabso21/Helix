@@ -342,3 +342,12 @@ def test_a_saved_mapping_keeps_whole_number_indices(tmp_path: Path) -> None:
     saved = yaml.safe_load((tmp_path / "configs/input/pad.yaml").read_text())
     assert saved["channels"]["aux2"] == {"axis": 4, "inverted": True, "deadband": 0.0}
     assert isinstance(saved["channels"]["aux2"]["axis"], int)
+
+
+def test_set_env_needs_a_running_session(server: Server) -> None:
+    client = LineClient(server.server_address[1])
+    reply = client.request("set_env", {"wind": {"mean": {"speed_mps": 5, "from_deg": 270}}})
+    assert reply["error"]["code"] == "invalid_state"
+    bad = client.request("set_env", {"wind": {"mean": {"speed_mps": -5}}})
+    assert bad["error"]["code"] == "invalid_params"
+    client.close()
