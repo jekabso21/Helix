@@ -179,3 +179,115 @@ TEST(ImuNoiseTest, BarometerDriftIsARandomWalkOnTopOfTheBias) {
   }
   EXPECT_NEAR(std::sqrt(sum_sq / runs), params.baro_drift_pa, 0.15 * params.baro_drift_pa);
 }
+
+namespace {
+
+sensors::ImuSample moving(double t) {
+  return sensors::ImuSample{.angular_rate_frd = Vector3d(std::sin(t), 2.0 * t, -t),
+                            .specific_force_frd = Vector3d(t, -t, -fpvsim::kStandardGravityMps2)};
+}
+
+}  // namespace
+
+TEST(ImuFaultTest, HealthyFaultsChangeNothing) {
+  sensors::ImuNoiseParams p = quiet();
+  p.gyro_noise_density = 0.01;
+  p.accel_noise_density = 0.05;
+  p.vibration_imbalance = 2e-7;
+  sensors::ImuNoise plain(p);
+  sensors::ImuNoise faulted(p);
+  faulted.set_faults(sensors::healthy_imu_faults());
+  for (int i = 0; i < 100; ++i) {
+    const sensors::ImuSample a = plain.apply(moving(i * 0.001), spinning(1500.0), 1, 3, i * 0.001);
+    const sensors::ImuSample b = faulted.apply(moving(i * 0.001), spinning(1500.0), 1, 3, i * 0.001);
+    ASSERT_EQ(a.angular_rate_frd, b.angular_rate_frd);
+    ASSERT_EQ(a.specific_force_frd, b.specific_force_frd);
+  }
+}
+
+TEST(ImuFaultTest, NoiseScaleMultipliesTheWhiteNoise) {
+  sensors::ImuNoiseParams p = quiet();
+  p.gyro_noise_density = 0.002;
+  sensors::ImuNoise noise(p);
+  sensors::ImuFaults faults = sensors::healthy_imu_faults();
+  faults.gyro.noise_scale = 3.0;
+  noise.set_faults(faults);
+  double sum2 = 0.0;
+  const int n = 20000;
+  for (int i = 0; i < n; ++i) {
+    const double x = noise.apply(rest(), spinning(0.0), 1, 3, 0.0).angular_rate_frd.x();
+    sum2 += x * x;
+  }
+  const double expected_sigma = 3.0 * p.gyro_noise_density * std::sqrt(p.sample_rate_hz);
+  EXPECT_NEAR(std::sqrt(sum2 / n) / expected_sigma, 1.0, 0.05);
+}
+
+TEST(ImuFaultTest, BiasStepAddsOnTopOfTheSignal) {
+  sensors::ImuNoise noise(quiet());
+  sensors::ImuFaults faults = sensors::healthy_imu_faults();
+  faults.gyro.bias_step = Vector3d(0.3, 0.0, -0.1);
+  faults.accel.bias_step = Vector3d(0.0, 1.5, 0.0);
+  noise.set_faults(faults);
+  const sensors::ImuSample out = noise.apply(rest(), spinning(0.0), 1, 3, 0.0);
+  EXPECT_DOUBLE_EQ(out.angular_rate_frd.x(), 0.3);
+  EXPECT_DOUBLE_EQ(out.angular_rate_frd.z(), -0.1);
+  EXPECT_DOUBLE_EQ(out.specific_force_frd.y(), 1.5);
+}
+
+TEST(ImuFaultTest, AStuckAxisHoldsItsLastValueUntilReleased) {
+  sensors::ImuNoise noise(quiet());
+  (void)noise.apply(moving(1.0), spinning(0.0), 1, 3, 0.0);  // gyro y = 2.0
+  sensors::ImuFaults faults = sensors::healthy_imu_faults();
+  faults.gyro.stuck = {false, true, false};
+  noise.set_faults(faults);
+  const sensors::ImuSample held = noise.apply(moving(5.0), spinning(0.0), 1, 3, 0.0);
+  EXPECT_DOUBLE_EQ(held.angular_rate_frd.y(), 2.0);
+  EXPECT_DOUBLE_EQ(held.angular_rate_frd.z(), -5.0);  // the other axes still move
+  noise.set_faults(sensors::healthy_imu_faults());
+  EXPECT_DOUBLE_EQ(noise.apply(moving(5.0), spinning(0.0), 1, 3, 0.0).angular_rate_frd.y(), 10.0);
+}
+
+TEST(ImuFaultTest, RangeScaleShrinksTheSaturation) {
+  sensors::ImuNoiseParams p = quiet();
+  p.gyro_range_radps = 10.0;
+  sensors::ImuNoise noise(p);
+  sensors::ImuFaults faults = sensors::healthy_imu_faults();
+  faults.gyro.range_scale = 0.25;
+  noise.set_faults(faults);
+  sensors::ImuSample fast = rest();
+  fast.angular_rate_frd = Vector3d(8.0, -8.0, 1.0);
+  const sensors::ImuSample out = noise.apply(fast, spinning(0.0), 1, 3, 0.0);
+  EXPECT_DOUBLE_EQ(out.angular_rate_frd.x(), 2.5);
+  EXPECT_DOUBLE_EQ(out.angular_rate_frd.y(), -2.5);
+  EXPECT_DOUBLE_EQ(out.angular_rate_frd.z(), 1.0);
+}
+
+TEST(ImuFaultTest, ADamagedPropShakesHarderInProportion) {
+  sensors::ImuNoiseParams p = quiet();
+  p.vibration_imbalance = 2e-7;
+  sensors::ImuNoise healthy(p);
+  sensors::ImuNoise damaged(p);
+  sensors::ImuFaults faults = sensors::healthy_imu_faults();
+  faults.imbalance_scale[0] = 10.0;
+  damaged.set_faults(faults);
+  for (int i = 1; i < 50; ++i) {
+    const double t = i * 0.00037;
+    const double a = healthy.apply(rest(), spinning(1500.0), 1, 3, t).specific_force_frd.z() +
+                     fpvsim::kStandardGravityMps2;
+    const double b = damaged.apply(rest(), spinning(1500.0), 1, 3, t).specific_force_frd.z() +
+                     fpvsim::kStandardGravityMps2;
+    ASSERT_NEAR(b, 10.0 * a, 1e-9 + 1e-9 * std::abs(a));
+  }
+}
+
+TEST(ImuFaultTest, BarometerCanStickOrJump) {
+  sensors::ImuNoise noise(quiet());
+  EXPECT_DOUBLE_EQ(noise.apply_baro(101000.0).pressure_pa, 101000.0);
+  sensors::ImuFaults faults = sensors::healthy_imu_faults();
+  faults.baro_offset_pa = -250.0;
+  noise.set_faults(faults);
+  EXPECT_DOUBLE_EQ(noise.apply_baro(101000.0).pressure_pa, 100750.0);
+  faults.baro_stuck = true;
+  noise.set_faults(faults);
+  EXPECT_DOUBLE_EQ(noise.apply_baro(99000.0).pressure_pa, 100750.0);
+}

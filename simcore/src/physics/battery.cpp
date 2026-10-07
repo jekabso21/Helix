@@ -23,9 +23,10 @@ double pack_resistance(const BatteryParams& params) {
 }  // namespace
 
 double solve_bus_voltage(const BatteryParams& params, const BatteryState& state,
-                         double fixed_current_a, double conductance_s) {
+                         double fixed_current_a, double conductance_s, double weak_cell_drop_v) {
   const double cells = static_cast<double>(params.cells);
-  const double open = cells * (open_circuit_voltage(params, state.soc) - state.v_rc);
+  const double open =
+      cells * (open_circuit_voltage(params, state.soc) - state.v_rc) - weak_cell_drop_v;
   const double r = pack_resistance(params);
   // V = open - r (I_fixed + G V)
   return std::max((open - r * fixed_current_a) / (1.0 + r * conductance_s), 0.0);
@@ -42,7 +43,7 @@ BatteryState initial_battery(const BatteryParams& params) {
 }
 
 BatteryState step_battery(const BatteryParams& params, const BatteryState& state,
-                          double motor_current_a, double dt_s) {
+                          double motor_current_a, double dt_s, double weak_cell_drop_v) {
   const double current = std::max(motor_current_a, 0.0) + params.avionics_current_a;
   const double cells = static_cast<double>(params.cells);
   const double soc =
@@ -55,7 +56,8 @@ BatteryState step_battery(const BatteryParams& params, const BatteryState& state
   }
   const double cell_v =
       open_circuit_voltage(params, soc) - current * params.cell_resistance_ohm - v_rc;
-  const double bus = std::max(cells * cell_v - current * params.connector_resistance_ohm, 0.0);
+  const double bus = std::max(
+      cells * cell_v - weak_cell_drop_v - current * params.connector_resistance_ohm, 0.0);
   return BatteryState{.soc = soc,
                       .v_rc = v_rc,
                       .current_a = current,

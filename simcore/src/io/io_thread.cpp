@@ -7,6 +7,8 @@
 #include <unistd.h>
 
 #include <algorithm>
+#include <filesystem>
+#include <fstream>
 #include <array>
 #include <cerrno>
 #include <cstring>
@@ -99,6 +101,36 @@ nlohmann::json state_json(const sim::Snapshot& s) {
           {"motor_packets", s.motor_packets}};
 }
 
+std::string csv_quote(const std::string& text) {
+  std::string quoted = "\"";
+  for (const char c : text) {
+    quoted += c;
+    if (c == '"') {
+      quoted += '"';
+    }
+  }
+  return quoted + "\"";
+}
+
+// Failure events go next to the truth log; no truth log, no events file
+std::ofstream open_events(const std::filesystem::path& truth_csv) {
+  std::ofstream events;
+  if (!truth_csv.empty()) {
+    events.open(truth_csv.parent_path() / "events.csv");
+    events << "t_s,event,failure_id,failure\n";
+  }
+  return events;
+}
+
+nlohmann::json failures_json(const sim::Snapshot& s) {
+  nlohmann::json list = nlohmann::json::array();
+  const double now_s = static_cast<double>(s.sim_time_ns) * 1e-9;
+  for (std::size_t i = 0; i < s.failure_count; ++i) {
+    list.push_back(sim::failure_to_json(s.failures[i], now_s));
+  }
+  return list;
+}
+
 nlohmann::json telemetry_json(const sim::Snapshot& s, std::int64_t physics_rate_hz,
                               const std::string& input_source) {
   const Eigen::Quaterniond q(s.q_ned_from_frd[0], s.q_ned_from_frd[1], s.q_ned_from_frd[2],
@@ -142,7 +174,7 @@ nlohmann::json telemetry_json(const sim::Snapshot& s, std::int64_t physics_rate_
             {"crashed", s.crashed},
             {"overruns", s.overruns},
             {"error_counters", {{"malformed_motor_packets", s.malformed_packets}}},
-            {"active_failures", nlohmann::json::array()}}},
+            {"active_failures", failures_json(s)}}},
           {"link", nullptr}};
 }
 
@@ -182,6 +214,7 @@ class IoThread::Impl {
         render_socket_(net::UdpSocket::unbound()),
         render_address_(net::make_address(config_.app_host, config_.app_port)),
         truth_(config_.truth_csv),
+        events_(open_events(config_.truth_csv)),
         listen_fd_(listen_tcp(config_.api_host, config_.api_port)),
         render_every_(config_.physics_rate_hz / config_.state_rate_hz),
         log_every_(config_.physics_rate_hz / config_.log_rate_hz) {
@@ -222,6 +255,7 @@ class IoThread::Impl {
     while (snapshots_.try_pop(s)) {
       ++tick_;
       latest_ = s;
+      log_failure_events(s);
       if (tick_ % render_every_ == 0) {
         send_render_state(s);
       }
@@ -248,7 +282,20 @@ class IoThread::Impl {
     sim::CommandResult result{};
     while (results_.try_pop(result)) {
       for (Client& client : clients_) {
-        if (client.id == result.client) {
+        if (client.id != result.client) {
+          continue;
+        }
+        if (result.status == sim::CommandStatus::kFailuresFull) {
+          write_to(client, api::error_response(result.request_id, "invalid_state",
+                                               "too many failures; clear some first"));
+        } else if (result.status == sim::CommandStatus::kUnknownFailure) {
+          write_to(client, api::error_response(result.request_id, "invalid_params",
+                                               "no such failure"));
+        } else if (result.failure_id != 0) {
+          write_to(client, api::ok_response(result.request_id,
+                                            {{"applied_at_ns", result.applied_at_ns},
+                                             {"failure_id", result.failure_id}}));
+        } else {
           write_to(client,
                    api::ok_response(result.request_id, {{"applied_at_ns", result.applied_at_ns}}));
         }
@@ -382,12 +429,23 @@ class IoThread::Impl {
       case api::Method::kSetEnv:
         set_env(client, request);
         break;
+      case api::Method::kInjectFailure:
+        inject_failure(client, request);
+        break;
+      case api::Method::kClearFailure:
+        clear_failure(client, request);
+        break;
+      case api::Method::kListFailures:
+        write_to(client, api::ok_response(request.id,
+                                          {{"failures", latest_ ? failures_json(*latest_)
+                                                                : nlohmann::json::array()}}));
+        break;
     }
   }
 
   void queue_command(Client& client, std::int64_t request_id, sim::CommandType type) {
     const sim::Command command{
-        .client = client.id, .request_id = request_id, .type = type, .env = {}};
+        .client = client.id, .request_id = request_id, .type = type, .env = {}, .failure = {}};
     if (!commands_.try_push(command)) {
       write_to(client, api::error_response(request_id, "internal", "command queue full"));
     }
@@ -431,7 +489,11 @@ class IoThread::Impl {
 
   void set_env(Client& client, const api::Request& request) {
     sim::Command command{
-        .client = client.id, .request_id = request.id, .type = sim::CommandType::kSetEnv, .env = {}};
+        .client = client.id,
+        .request_id = request.id,
+        .type = sim::CommandType::kSetEnv,
+        .env = {},
+        .failure = {}};
     try {
       command.env = sim::env_update_from_json(request.params);
     } catch (const std::exception& error) {
@@ -441,6 +503,86 @@ class IoThread::Impl {
     if (!commands_.try_push(command)) {
       write_to(client, api::error_response(request.id, "internal", "command queue full"));
     }
+  }
+
+  void inject_failure(Client& client, const api::Request& request) {
+    sim::Command command{.client = client.id,
+                         .request_id = request.id,
+                         .type = sim::CommandType::kInjectFailure,
+                         .env = {},
+                         .failure = {}};
+    try {
+      command.failure = sim::failure_from_json(request.params, latest_ ? latest_->motor_count : 4);
+    } catch (const std::exception& error) {
+      write_to(client, api::error_response(request.id, "invalid_params", error.what()));
+      return;
+    }
+    command.failure.id = next_failure_id_++;
+    if (!commands_.try_push(command)) {
+      write_to(client, api::error_response(request.id, "internal", "command queue full"));
+    }
+  }
+
+  void clear_failure(Client& client, const api::Request& request) {
+    sim::Command command{.client = client.id,
+                         .request_id = request.id,
+                         .type = sim::CommandType::kClearFailure,
+                         .env = {},
+                         .failure = {}};
+    try {
+      command.failure = sim::clear_from_json(request.params);
+    } catch (const std::exception& error) {
+      write_to(client, api::error_response(request.id, "invalid_params", error.what()));
+      return;
+    }
+    if (!commands_.try_push(command)) {
+      write_to(client, api::error_response(request.id, "internal", "command queue full"));
+    }
+  }
+
+  // One row per failure taking effect or ending, at the sim time the loop saw it
+  void log_failure_events(const sim::Snapshot& s) {
+    const double now_s = static_cast<double>(s.sim_time_ns) * 1e-9;
+    std::array<std::uint32_t, sim::kMaxFailures> effective{};
+    std::size_t count = 0;
+    for (std::size_t i = 0; i < s.failure_count; ++i) {
+      const sim::ActiveFailure& f = s.failures[i];
+      if (now_s >= f.start_s && (f.end_s < 0.0 || now_s < f.end_s)) {
+        effective[count++] = f.id;
+        if (!was_effective(f.id)) {
+          write_event(now_s, "start", sim::failure_to_json(f, now_s));
+        }
+      }
+    }
+    for (std::size_t i = 0; i < effective_count_; ++i) {
+      bool still = false;
+      for (std::size_t j = 0; j < count; ++j) {
+        still = still || effective[j] == effective_[i];
+      }
+      if (!still) {
+        write_event(now_s, "end", {{"failure_id", effective_[i]}});
+      }
+    }
+    effective_ = effective;
+    effective_count_ = count;
+  }
+
+  bool was_effective(std::uint32_t id) const {
+    for (std::size_t i = 0; i < effective_count_; ++i) {
+      if (effective_[i] == id) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  void write_event(double time_s, const char* event, const nlohmann::json& failure) {
+    if (!events_.is_open()) {
+      return;
+    }
+    events_ << time_s << ',' << event << ',' << failure.value("failure_id", 0U) << ','
+            << csv_quote(failure.dump()) << '\n';
+    events_.flush();
   }
 
   void reload_model(Client& client, const api::Request& request) {
@@ -544,6 +686,10 @@ class IoThread::Impl {
   net::UdpSocket render_socket_;
   sockaddr_in render_address_;
   log::TruthCsv truth_;
+  std::ofstream events_;
+  std::uint32_t next_failure_id_ = 1;
+  std::array<std::uint32_t, sim::kMaxFailures> effective_{};
+  std::size_t effective_count_ = 0;
   int listen_fd_;
   std::int64_t render_every_;
   std::int64_t log_every_;

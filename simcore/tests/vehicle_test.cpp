@@ -238,3 +238,96 @@ TEST(VehicleTest, WindPushesAStillBodyDownwindWithTheDragForce) {
   const sim::StepResult carried = drifting.step({}, kAir, wind, 0.0, 0.001);
   EXPECT_NEAR(carried.rates.acceleration_ned.y(), 0.0, 1e-9);
 }
+
+namespace {
+
+sim::FailureModifiers one_motor(std::size_t motor, double gain, double thrust_scale) {
+  sim::FailureModifiers m = sim::healthy_modifiers();
+  m.motors[motor].output_gain = gain;
+  m.motors[motor].thrust_scale = thrust_scale;
+  m.motors[motor].torque_scale = thrust_scale;
+  return m;
+}
+
+// Runs the drone at a fixed command for a while and returns the last step
+sim::StepResult spin_up(sim::Vehicle& vehicle, double command, double seconds) {
+  sim::MotorCommandArray commands{};
+  commands.fill(command);
+  sim::StepResult result{};
+  for (int i = 0; i < static_cast<int>(seconds * 1000.0); ++i) {
+    result = vehicle.step(commands, kAir, i * 0.001, 0.001);
+  }
+  return result;
+}
+
+}  // namespace
+
+TEST(VehicleFailureTest, AMotorThatIsOutMakesNoThrust) {
+  const sim::VehicleParams params = quad_params();
+  sim::Vehicle vehicle(params, sim::spawn_state(params, 0.0, 0.0, 30.0, 0.0));
+  vehicle.set_modifiers(one_motor(1, 0.0, 1.0));
+  const sim::StepResult result = spin_up(vehicle, 0.5, 0.3);
+  EXPECT_EQ(result.motors[1].thrust_n, 0.0);
+  EXPECT_GT(result.motors[0].thrust_n, 1.0);
+  // the other three lift a corner and the drone starts to roll or pitch
+  EXPECT_GT(vehicle.state().body.angular_rate_frd.head<2>().norm(), 0.1);
+}
+
+TEST(VehicleFailureTest, ADamagedPropMakesLessThrustAtTheSameSpeed) {
+  const sim::VehicleParams params = quad_params();
+  sim::Vehicle healthy(params, sim::spawn_state(params, 0.0, 0.0, 30.0, 0.0));
+  sim::Vehicle damaged(params, sim::spawn_state(params, 0.0, 0.0, 30.0, 0.0));
+  damaged.set_modifiers(one_motor(2, 1.0, 0.7));
+  const sim::StepResult a = spin_up(healthy, 0.5, 0.01);
+  const sim::StepResult b = spin_up(damaged, 0.5, 0.01);
+  // thrust per (rad/s)^2 drops by the damage at whatever speed the rotor reaches
+  const double per_speed_a = a.motors[2].thrust_n / (a.motors[2].speed_radps * a.motors[2].speed_radps);
+  const double per_speed_b = b.motors[2].thrust_n / (b.motors[2].speed_radps * b.motors[2].speed_radps);
+  EXPECT_NEAR(per_speed_b / per_speed_a, 0.7, 1e-6);
+  // the other motors only see the slightly smaller sag of a lighter-loaded battery
+  EXPECT_NEAR(b.motors[0].thrust_n, a.motors[0].thrust_n, 1e-3 * a.motors[0].thrust_n);
+}
+
+TEST(VehicleFailureTest, ADesyncingEscStopsDrivingDuringItsDropouts) {
+  const sim::VehicleParams params = quad_params();
+  sim::Vehicle vehicle(params, sim::spawn_state(params, 0.0, 0.0, 30.0, 0.0));
+  sim::FailureModifiers m = sim::healthy_modifiers();
+  m.motors[0].desync_period_s = 0.2;
+  m.motors[0].desync_dropout_s = 0.1;
+  vehicle.set_modifiers(m);
+  sim::MotorCommandArray commands{};
+  commands.fill(0.5);
+  double driven = 0.0;
+  double dropped = 0.0;
+  for (int i = 0; i < 1000; ++i) {
+    const double t = i * 0.001;
+    const sim::StepResult r = vehicle.step(commands, kAir, t, 0.001);
+    (std::fmod(t, 0.2) < 0.1 ? dropped : driven) += r.motors[0].bus_current_a;
+  }
+  // a freewheeling ESC draws nothing from the battery
+  EXPECT_LT(dropped, 0.05 * driven);
+}
+
+TEST(VehicleFailureTest, AWeakPackSagsLowerUnderTheSameLoad) {
+  const sim::VehicleParams params = quad_params();
+  sim::Vehicle healthy(params, sim::spawn_state(params, 0.0, 0.0, 30.0, 0.0));
+  sim::Vehicle weak(params, sim::spawn_state(params, 0.0, 0.0, 30.0, 0.0));
+  sim::FailureModifiers m = sim::healthy_modifiers();
+  m.weak_cell_drop_v = 0.8;
+  m.cell_resistance_scale = 3.0;
+  weak.set_modifiers(m);
+  (void)spin_up(healthy, 0.6, 0.2);
+  (void)spin_up(weak, 0.6, 0.2);
+  EXPECT_LT(weak.state().battery.bus_voltage_v, healthy.state().battery.bus_voltage_v - 0.8);
+}
+
+TEST(VehicleFailureTest, HealthyModifiersChangeNothing) {
+  const sim::VehicleParams params = quad_params();
+  sim::Vehicle plain(params, sim::spawn_state(params, 0.0, 0.0, 30.0, 0.0));
+  sim::Vehicle healthy(params, sim::spawn_state(params, 0.0, 0.0, 30.0, 0.0));
+  healthy.set_modifiers(sim::healthy_modifiers());
+  (void)spin_up(plain, 0.55, 0.5);
+  (void)spin_up(healthy, 0.55, 0.5);
+  EXPECT_EQ(plain.state().body.position_ned, healthy.state().body.position_ned);
+  EXPECT_EQ(plain.state().battery.bus_voltage_v, healthy.state().battery.bus_voltage_v);
+}

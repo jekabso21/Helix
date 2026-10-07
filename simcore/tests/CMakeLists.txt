@@ -19,6 +19,8 @@ fpvsim_add_test(simcore_tests
     bridge_test.cpp
     config_test.cpp
     env_update_test.cpp
+    failure_request_test.cpp
+    failures_test.cpp
     kiss_test.cpp
     mapping_json_test.cpp
     mapping_test.cpp

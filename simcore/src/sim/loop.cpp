@@ -13,6 +13,7 @@
 #include <fpvsim/env/atmosphere.hpp>
 #include <fpvsim/env/wind.hpp>
 #include <fpvsim/sim/env_update.hpp>
+#include <fpvsim/sim/failures.hpp>
 #include <fpvsim/input/control.hpp>
 #include <fpvsim/input/joystick.hpp>
 #include <fpvsim/io/io_thread.hpp>
@@ -49,10 +50,14 @@ Snapshot make_snapshot(SimTime t, std::int64_t step_index, const Vehicle& vehicl
                        const bf::RcChannels& rc, bool paused, double air_density,
                        const LoopCounters& counters, const bf::LinkCounters& link,
                        const input::DeviceState& device, const input::DeviceInfo& device_info,
-                       const env::Wind& wind, const Eigen::Vector3d& wind_ned) {
+                       const env::Wind& wind, const Eigen::Vector3d& wind_ned,
+                       const FailureSet& failures) {
   const VehicleState& state = vehicle.state();
   const auto& b = state.body;
   Snapshot s{};
+  const auto held = failures.held();
+  s.failure_count = static_cast<std::uint8_t>(held.size());
+  std::copy(held.begin(), held.end(), s.failures.begin());
   s.wind_ned = {wind_ned.x(), wind_ned.y(), wind_ned.z()};
   s.wind_mean_speed_mps = wind.params().mean_speed_mps;
   s.wind_mean_from_rad = wind.params().mean_from_rad;
@@ -111,11 +116,16 @@ bool apply_commands(io::CommandQueue& commands_in, io::ResultQueue& results_out,
                     bf::MotorCommands& commands, MotorCommandArray& motor_commands, bool& paused,
                     input::InputControl& input_control, ModelControl& model_control,
                     input::JoystickManager* joystick, input::InputMapping& mapping,
-                    env::Wind& wind) {
+                    env::Wind& wind, FailureSet& failures) {
   bool running = true;
   Command command{};
   VehicleParams reloaded{};
   while (commands_in.try_pop(command)) {
+    CommandResult outcome{.client = command.client,
+                          .request_id = command.request_id,
+                          .applied_at_ns = t.ns,
+                          .status = CommandStatus::kOk,
+                          .failure_id = 0};
     switch (command.type) {
       case CommandType::kReset:
         vehicle.reset(spawn);
@@ -147,6 +157,24 @@ bool apply_commands(io::CommandQueue& commands_in, io::ResultQueue& results_out,
         // a full gust queue drops the gust; the mean and turbulence still change
         (void)apply_env_update(wind, command.env, to_seconds(t));
         break;
+      case CommandType::kInjectFailure: {
+        const FailureCommand& f = command.failure;
+        const double start = f.start_s >= 0.0 ? f.start_s : to_seconds(t);
+        const double end = f.duration_s > 0.0 ? start + f.duration_s : -1.0;
+        if (failures.add(f.id, f.spec, start, end)) {
+          outcome.failure_id = f.id;
+        } else {
+          outcome.status = CommandStatus::kFailuresFull;
+        }
+        break;
+      }
+      case CommandType::kClearFailure:
+        if (command.failure.all) {
+          failures.clear();
+        } else if (!failures.remove(command.failure.id)) {
+          outcome.status = CommandStatus::kUnknownFailure;
+        }
+        break;
       case CommandType::kReloadModel:
         if (model_control.take(reloaded)) {
           reloaded.imu_noise.sample_rate_hz = vehicle.params().imu_noise.sample_rate_hz;
@@ -167,8 +195,7 @@ bool apply_commands(io::CommandQueue& commands_in, io::ResultQueue& results_out,
                              .mapping = mapping,
                              .device_names = input::JoystickManager::device_names()});
     }
-    results_out.try_push(CommandResult{
-        .client = command.client, .request_id = command.request_id, .applied_at_ns = t.ns});
+    results_out.try_push(outcome);
   }
   return running;
 }
@@ -224,6 +251,7 @@ RunSummary run_realtime(const config::SessionConfig& session, const VehicleParam
     (void)wind.add_gust(gust);
   }
   Eigen::Vector3d wind_ned = Eigen::Vector3d::Zero();
+  FailureSet failures;
   bf::BetaflightLink link(session.betaflight);
   pilot::AltitudeHoldPilot autopilot(session.input.altitude_hold);
   const bool use_joystick = session.input.source == "gamepad";
@@ -283,7 +311,7 @@ RunSummary run_realtime(const config::SessionConfig& session, const VehicleParam
 
     running = apply_commands(commands_in, results_out, t, vehicle, spawn, session.spawn, autopilot,
                              commands, motor_commands, paused, input_control, model_control,
-                             joystick.get(), mapping, wind);
+                             joystick.get(), mapping, wind, failures);
 
     link.poll_motors(commands);
     for (std::size_t i = 0; i < bf::kMotorCount; ++i) {
@@ -305,6 +333,10 @@ RunSummary run_realtime(const config::SessionConfig& session, const VehicleParam
       // the turbulence scales use the speed through the air seen on the previous step
       const double air_speed = (before.body.velocity_ned - wind_ned).norm();
       wind_ned = wind.step(to_seconds(t), dt_s, height_m, air_speed);
+      // failures only change the vehicle's modifiers, and only when one starts or ends
+      if (failures.update(to_seconds(t))) {
+        vehicle.set_modifiers(failures.modifiers(to_seconds(t)));
+      }
       result = vehicle.step(motor_commands, air, wind_ned, to_seconds(t), dt_s);
       if (step_index % fdm_every == 0) {
         last_fdm = bf::FdmInput{.sim_time_s = to_seconds(t),
@@ -336,7 +368,7 @@ RunSummary run_realtime(const config::SessionConfig& session, const VehicleParam
     }
     if (!snapshots.try_push(make_snapshot(t, step_index, vehicle, result, commands, rc, paused,
                                           air.density_kg_m3, counters, link.counters(), device,
-                                          device_info, wind, wind_ned))) {
+                                          device_info, wind, wind_ned, failures))) {
       ++dropped_snapshots;
     }
 

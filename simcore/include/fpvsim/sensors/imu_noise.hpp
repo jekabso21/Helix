@@ -35,6 +35,24 @@ struct BaroSample {
   double pressure_pa;
 };
 
+// A sensor failure on top of the healthy model; healthy_imu_faults() changes nothing
+struct SensorFault {
+  double noise_scale;          // multiplies the white noise
+  Eigen::Vector3d bias_step;   // added to the healthy bias
+  std::array<bool, 3> stuck;   // an axis holds the value it had when it stuck
+  double range_scale;          // multiplies the saturation range (only where a range is set)
+};
+
+struct ImuFaults {
+  SensorFault gyro;
+  SensorFault accel;
+  std::array<double, physics::kMaxMotors> imbalance_scale;  // per motor, damaged prop
+  bool baro_stuck;
+  double baro_offset_pa;
+};
+
+ImuFaults healthy_imu_faults();
+
 // Seeded, allocation-free noise on top of the ideal IMU; deterministic for a given seed
 class ImuNoise {
  public:
@@ -44,6 +62,7 @@ class ImuNoise {
                   const std::array<physics::MotorOutput, physics::kMaxMotors>& motors,
                   std::size_t motor_count, int blades, double time_s);
   BaroSample apply_baro(double true_pressure_pa);
+  void set_faults(const ImuFaults& faults);
 
   [[nodiscard]] const Eigen::Vector3d& gyro_bias() const { return gyro_bias_; }
   [[nodiscard]] const Eigen::Vector3d& accel_bias() const { return accel_bias_; }
@@ -60,6 +79,10 @@ class ImuNoise {
   Eigen::Vector3d gyro_bias_;
   Eigen::Vector3d accel_bias_;
   double baro_drift_pa_ = 0.0;
+  ImuFaults faults_ = healthy_imu_faults();
+  ImuSample last_{.angular_rate_frd = Eigen::Vector3d::Zero(),
+                  .specific_force_frd = Eigen::Vector3d::Zero()};
+  double last_baro_pa_ = 0.0;
   std::array<std::array<double, 3>, physics::kMaxMotors> phase_;
   std::array<Eigen::Vector3d, physics::kMaxMotors> axis_weight_;
 };

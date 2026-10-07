@@ -14,6 +14,7 @@
 #include <fpvsim/physics/rigid_body.hpp>
 #include <fpvsim/sensors/imu.hpp>
 #include <fpvsim/sensors/imu_noise.hpp>
+#include <fpvsim/sim/failures.hpp>
 
 namespace fpvsim::sim {
 
@@ -65,6 +66,9 @@ class Vehicle {
   void reset(const physics::RigidBodyState& spawn);
   // Hook for failure injection: a desynced ESC stops driving and the rotor freewheels
   void set_motor_desync(std::size_t index, bool on);
+  // Failures change only these; healthy_modifiers() is the normal drone
+  void set_modifiers(const FailureModifiers& modifiers);
+  [[nodiscard]] const FailureModifiers& modifiers() const { return modifiers_; }
   // Swaps the model and resets to spawn; params are copied, no heap involved
   void reload(const VehicleParams& params, const physics::RigidBodyState& spawn);
 
@@ -76,6 +80,7 @@ class Vehicle {
   VehicleParams params_;
   VehicleState state_;
   sensors::ImuNoise imu_noise_;
+  FailureModifiers modifiers_ = healthy_modifiers();
 };
 
 // Level, at rest, with the lowest contact point on the ground (NED z = 0) plus height_agl_m

@@ -35,13 +35,15 @@ double open_circuit_voltage(const BatteryParams& params, double soc);  // per ce
 
 // Bus voltage when the loads draw fixed_current_a plus conductance_s times the bus voltage; solved
 // together so the sag never lags the current it causes (that lag oscillates at full throttle)
+// weak_cell_drop_v: one cell sits that far below the others (a failure; 0 when healthy)
 double solve_bus_voltage(const BatteryParams& params, const BatteryState& state,
-                         double fixed_current_a, double conductance_s);
+                         double fixed_current_a, double conductance_s,
+                         double weak_cell_drop_v = 0.0);
 
 BatteryState initial_battery(const BatteryParams& params);
 
 // Pack current is the motor bus currents plus avionics; the voltage follows that current
 BatteryState step_battery(const BatteryParams& params, const BatteryState& state,
-                          double motor_current_a, double dt_s);
+                          double motor_current_a, double dt_s, double weak_cell_drop_v = 0.0);
 
 }  // namespace fpvsim::physics

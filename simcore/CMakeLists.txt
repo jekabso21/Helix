@@ -30,6 +30,8 @@ add_library(fpvsim_simcore STATIC
     src/net/udp_socket.cpp
     src/pilot/altitude_hold.cpp
     src/sim/env_update.cpp
+    src/sim/failure_request.cpp
+    src/sim/failures.cpp
     src/sim/loop.cpp
     src/sim/model_control.cpp
     src/sim/vehicle.cpp)

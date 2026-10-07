@@ -7,6 +7,8 @@
 #include <fpvsim/input/mapping.hpp>
 #include <fpvsim/physics/propulsion.hpp>
 #include <fpvsim/sim/env_update.hpp>
+#include <fpvsim/sim/failure_request.hpp>
+#include <fpvsim/sim/failures.hpp>
 
 namespace fpvsim::sim {
 
@@ -46,6 +48,8 @@ struct Snapshot {
   double wind_mean_speed_mps;
   double wind_mean_from_rad;
   double wind_turbulence_w20_mps;
+  std::array<ActiveFailure, kMaxFailures> failures;
+  std::uint8_t failure_count;
   std::uint64_t overruns;
   std::uint64_t motor_packets;
   std::uint64_t malformed_packets;
@@ -62,20 +66,27 @@ enum class CommandType : std::uint8_t {
   kSetInputMapping,
   kSelectInputDevice,
   kReloadModel,
-  kSetEnv
+  kSetEnv,
+  kInjectFailure,
+  kClearFailure
 };
 
 struct Command {
   std::uint32_t client;
   std::int64_t request_id;
   CommandType type;
-  EnvUpdate env;  // only for kSetEnv
+  EnvUpdate env;           // only for kSetEnv
+  FailureCommand failure;  // only for kInjectFailure and kClearFailure
 };
+
+enum class CommandStatus : std::uint8_t { kOk, kFailuresFull, kUnknownFailure };
 
 struct CommandResult {
   std::uint32_t client;
   std::int64_t request_id;
   std::int64_t applied_at_ns;
+  CommandStatus status;
+  std::uint32_t failure_id;  // the failure injected, when there was one
 };
 
 }  // namespace fpvsim::sim

@@ -94,3 +94,17 @@ TEST(BatteryTest, TransientBranchRelaxesWithItsTimeConstant) {
                         20.0 * params.connector_resistance_ohm;
   EXPECT_NEAR(state.bus_voltage_v, steady, 1e-9);
 }
+
+// A weak cell sits below the others by a fixed voltage, so the pack does too, loaded or not
+TEST(BatteryTest, AWeakCellLowersThePackByItsDrop) {
+  physics::BatteryParams params = quad::quad_battery();
+  params.avionics_current_a = 0.0;
+  const physics::BatteryState state = physics::initial_battery(params);
+  const physics::BatteryState weak = physics::step_battery(params, state, 0.0, 0.001, 0.6);
+  EXPECT_NEAR(weak.bus_voltage_v, 6.0 * 4.20 - 0.6, 1e-9);
+  const double healthy_solved = physics::solve_bus_voltage(params, state, 20.0, 0.0);
+  EXPECT_NEAR(physics::solve_bus_voltage(params, state, 20.0, 0.0, 0.6), healthy_solved - 0.6, 1e-9);
+  // the brownout watches the lowered voltage
+  params.esc_cutoff_v = 6.0 * 4.20 - 0.3;
+  EXPECT_TRUE(physics::step_battery(params, state, 0.0, 0.001, 0.6).cutoff);
+}
