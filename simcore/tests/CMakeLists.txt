@@ -10,6 +10,7 @@ fpvsim_add_test(simcore_model_tests
     rigid_body_test.cpp
     thrust_table_test.cpp
     step_stats_test.cpp
+    wind_test.cpp
     LIBS fpvsim::simcore_models)
 
 fpvsim_add_test(simcore_tests
@@ -17,6 +18,7 @@ fpvsim_add_test(simcore_tests
     api_protocol_test.cpp
     bridge_test.cpp
     config_test.cpp
+    env_update_test.cpp
     kiss_test.cpp
     mapping_json_test.cpp
     mapping_test.cpp

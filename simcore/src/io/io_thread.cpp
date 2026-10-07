@@ -105,7 +105,9 @@ nlohmann::json telemetry_json(const sim::Snapshot& s, std::int64_t physics_rate_
                              s.q_ned_from_frd[3]);
   const frames::EulerZyx euler = frames::euler_zyx_from_q(q);
   const double ground_speed = std::hypot(s.velocity_ned[0], s.velocity_ned[1]);
-  const double air_speed = std::hypot(s.velocity_ned[0], s.velocity_ned[1], s.velocity_ned[2]);
+  const double air_speed =
+      std::hypot(s.velocity_ned[0] - s.wind_ned[0], s.velocity_ned[1] - s.wind_ned[1],
+                 s.velocity_ned[2] - s.wind_ned[2]);
   return {{"flight",
            {{"altitude_agl_m", -s.position_ned[2]},
             {"ground_speed_mps", ground_speed},
@@ -122,6 +124,11 @@ nlohmann::json telemetry_json(const sim::Snapshot& s, std::int64_t physics_rate_
             {"soc", s.battery_soc},
             {"cutoff", s.battery_cutoff}}},
           {"motors", motors_json(s)},
+          {"environment",
+           {{"wind_ned_mps", s.wind_ned},
+            {"wind_mean_speed_mps", s.wind_mean_speed_mps},
+            {"wind_mean_from_rad", s.wind_mean_from_rad},
+            {"turbulence_w20_mps", s.wind_turbulence_w20_mps}}},
           {"input",
            {{"source", input_source},
             {"channels_us", s.rc_channels_us},
@@ -151,6 +158,9 @@ proto::RenderState render_state_from(const sim::Snapshot& s) {
   r.motor_count = s.motor_count;
   for (std::size_t i = 0; i < proto::kRenderStateMotors; ++i) {
     r.motor_rpm[i] = static_cast<float>(s.motor_rpm[i]);
+  }
+  for (std::size_t i = 0; i < 3; ++i) {
+    r.wind_ned[i] = static_cast<float>(s.wind_ned[i]);
   }
   r.sun_dir_ned = {0.0F, 0.0F, -1.0F};
   r.sun_intensity = 1.0F;
@@ -369,11 +379,15 @@ class IoThread::Impl {
       case api::Method::kReloadModel:
         reload_model(client, request);
         break;
+      case api::Method::kSetEnv:
+        set_env(client, request);
+        break;
     }
   }
 
   void queue_command(Client& client, std::int64_t request_id, sim::CommandType type) {
-    const sim::Command command{.client = client.id, .request_id = request_id, .type = type};
+    const sim::Command command{
+        .client = client.id, .request_id = request_id, .type = type, .env = {}};
     if (!commands_.try_push(command)) {
       write_to(client, api::error_response(request_id, "internal", "command queue full"));
     }
@@ -413,6 +427,20 @@ class IoThread::Impl {
       return;
     }
     queue_command(client, request.id, sim::CommandType::kSetInputMapping);
+  }
+
+  void set_env(Client& client, const api::Request& request) {
+    sim::Command command{
+        .client = client.id, .request_id = request.id, .type = sim::CommandType::kSetEnv, .env = {}};
+    try {
+      command.env = sim::env_update_from_json(request.params);
+    } catch (const std::exception& error) {
+      write_to(client, api::error_response(request.id, "invalid_params", error.what()));
+      return;
+    }
+    if (!commands_.try_push(command)) {
+      write_to(client, api::error_response(request.id, "internal", "command queue full"));
+    }
   }
 
   void reload_model(Client& client, const api::Request& request) {

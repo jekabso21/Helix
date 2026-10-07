@@ -51,9 +51,15 @@ double Vehicle::hover_command() const {
 
 StepResult Vehicle::step(const MotorCommandArray& commands, const env::Air& air, double time_s,
                          double dt_s) {
+  return step(commands, air, Eigen::Vector3d::Zero(), time_s, dt_s);
+}
+
+StepResult Vehicle::step(const MotorCommandArray& commands, const env::Air& air,
+                         const Eigen::Vector3d& wind_ned, double time_s, double dt_s) {
   StepResult result{};
   const physics::RigidBodyState& body = state_.body;
-  const Eigen::Vector3d air_velocity_frd = body.q_ned_from_frd.conjugate() * body.velocity_ned;
+  const Eigen::Vector3d air_velocity_frd =
+      body.q_ned_from_frd.conjugate() * (body.velocity_ned - wind_ned);
   const bool motors_off = state_.crashed || state_.battery.cutoff;
   // bus voltage and motor currents depend on each other; DC motors are linear in the voltage
   double fixed_current = params_.battery.avionics_current_a;

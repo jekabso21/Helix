@@ -6,6 +6,7 @@
 
 #include <fpvsim/input/mapping.hpp>
 #include <fpvsim/physics/propulsion.hpp>
+#include <fpvsim/sim/env_update.hpp>
 
 namespace fpvsim::sim {
 
@@ -41,6 +42,10 @@ struct Snapshot {
   bool touching;
   bool paused;
   double air_density_kg_m3;
+  std::array<double, 3> wind_ned;
+  double wind_mean_speed_mps;
+  double wind_mean_from_rad;
+  double wind_turbulence_w20_mps;
   std::uint64_t overruns;
   std::uint64_t motor_packets;
   std::uint64_t malformed_packets;
@@ -56,13 +61,15 @@ enum class CommandType : std::uint8_t {
   kShutdown,
   kSetInputMapping,
   kSelectInputDevice,
-  kReloadModel
+  kReloadModel,
+  kSetEnv
 };
 
 struct Command {
   std::uint32_t client;
   std::int64_t request_id;
   CommandType type;
+  EnvUpdate env;  // only for kSetEnv
 };
 
 struct CommandResult {

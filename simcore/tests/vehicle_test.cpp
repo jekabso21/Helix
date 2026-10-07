@@ -218,3 +218,23 @@ TEST(VehicleTest, InflowLossLowersTopSpeed) {
   EXPECT_LT(with, without);
   EXPECT_GT(with, 0.5 * without);  // a plausible loss, not a collapse
 }
+
+// Air-relative velocity drives the drag: a body at rest in a crosswind is pushed downwind with
+// exactly the drag force of the wind speed
+TEST(VehicleTest, WindPushesAStillBodyDownwindWithTheDragForce) {
+  const sim::VehicleParams params = quad_params();
+  sim::Vehicle vehicle(params, sim::spawn_state(params, 0.0, 0.0, 20.0, 0.0));
+  const Vector3d wind(0.0, 8.0, 0.0);  // blowing east
+  const sim::StepResult result = vehicle.step({}, kAir, wind, 0.0, 0.001);
+  const double drag_n = 0.5 * kAir.density_kg_m3 * params.aero.drag_area_frd_m2.y() * 8.0 * 8.0;
+  const double expected = drag_n / params.mass.mass_kg;
+  EXPECT_NEAR(result.rates.acceleration_ned.y(), expected, 1e-6 * expected + 1e-9);
+  EXPECT_NEAR(result.rates.acceleration_ned.x(), 0.0, 1e-9);
+  // moving with the air there is no drag at all
+  sim::Vehicle drifting(params, sim::spawn_state(params, 0.0, 0.0, 20.0, 0.0));
+  fpvsim::physics::RigidBodyState moving = drifting.state().body;
+  moving.velocity_ned = wind;
+  drifting.reset(moving);
+  const sim::StepResult carried = drifting.step({}, kAir, wind, 0.0, 0.001);
+  EXPECT_NEAR(carried.rates.acceleration_ned.y(), 0.0, 1e-9);
+}

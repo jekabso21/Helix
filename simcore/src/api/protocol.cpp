@@ -22,6 +22,7 @@ const std::map<std::string, Method>& method_names() {
       {"set_input_mapping", Method::kSetInputMapping},
       {"select_input_device", Method::kSelectInputDevice},
       {"reload_model", Method::kReloadModel},
+      {"set_env", Method::kSetEnv},
   };
   return names;
 }

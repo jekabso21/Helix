@@ -158,6 +158,28 @@ SessionConfig parse_session(const std::string& json_text, const std::filesystem:
   cfg.atmosphere = {.ground_temperature_k = atmosphere.at("ground_temperature_k").number(),
                     .ground_pressure_pa = atmosphere.at("ground_pressure_pa").number()};
 
+  const Reader wind = root.at("wind");
+  const Reader profile = wind.at("profile");
+  cfg.wind = {.mean_speed_mps = wind.at("mean_speed_mps").number(),
+              .mean_from_rad = wind.at("mean_from_rad").number(),
+              .profile = {.log_law = profile.at("log_law").get<bool>(),
+                          .roughness_m = profile.at("roughness_m").number(),
+                          .reference_height_m = profile.at("reference_height_m").number()},
+              .turbulence_w20_mps = wind.at("turbulence_w20_mps").number(),
+              .seed = cfg.seed};
+  const Reader gusts = wind.at("gusts");
+  if (gusts.size() > env::kMaxGusts) {
+    throw std::runtime_error(path.string() + ": wind.gusts: at most " +
+                             std::to_string(env::kMaxGusts) + " gusts");
+  }
+  for (std::size_t i = 0; i < gusts.size(); ++i) {
+    const Reader gust = gusts.index(i);
+    cfg.gusts.push_back(env::Gust{.start_s = gust.at("start_s").number(),
+                                  .duration_s = gust.at("duration_s").number(),
+                                  .amplitude_mps = gust.at("amplitude_mps").number(),
+                                  .from_rad = gust.at("from_rad").number()});
+  }
+
   const Reader spawn = root.at("spawn");
   cfg.spawn = {.north_m = spawn.at("north_m").number(),
                .east_m = spawn.at("east_m").number(),

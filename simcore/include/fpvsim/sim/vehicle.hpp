@@ -59,6 +59,9 @@ class Vehicle {
   // Ground is the plane NED z = 0; time_s only phases the vibration model
   StepResult step(const MotorCommandArray& commands, const env::Air& air, double time_s,
                   double dt_s);
+  // wind_ned is the air's own velocity; drag and rotor inflow see the velocity relative to it
+  StepResult step(const MotorCommandArray& commands, const env::Air& air,
+                  const Eigen::Vector3d& wind_ned, double time_s, double dt_s);
   void reset(const physics::RigidBodyState& spawn);
   // Hook for failure injection: a desynced ESC stops driving and the rotor freewheels
   void set_motor_desync(std::size_t index, bool on);

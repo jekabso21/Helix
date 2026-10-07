@@ -15,6 +15,9 @@ const char* kSession = R"({
                  "esc": {"enabled": true, "request_port": 9005, "uart_port": 5764}},
   "origin": {"lat_rad": 0.977, "lon_rad": 0.419, "altitude_m": 10.0},
   "atmosphere": {"ground_temperature_k": 288.15, "ground_pressure_pa": 101325.0},
+  "wind": {"mean_speed_mps": 6.0, "mean_from_rad": 4.712, "turbulence_w20_mps": 7.7,
+           "profile": {"log_law": true, "roughness_m": 0.05, "reference_height_m": 10.0},
+           "gusts": [{"start_s": 12.0, "duration_s": 2.0, "amplitude_mps": 5.0, "from_rad": 1.571}]},
   "spawn": {"north_m": 0.0, "east_m": 0.0, "height_agl_m": 0.0, "heading_rad": 0.0},
   "input": {"source": "altitude_hold", "rc_rate_hz": 250,
             "altitude_hold": {"target_height_m": 5.0, "climb_rate_mps": 1.0, "kp_us_per_m": 100.0,
@@ -78,6 +81,19 @@ TEST(ConfigTest, ParsesACompleteSession) {
   EXPECT_EQ(cfg.input.rc_rate_hz, 250);
   EXPECT_EQ(cfg.drone_json, "/run/x/drone.json");
   EXPECT_EQ(cfg.logging.truth_csv, "/run/x/truth.csv");
+}
+
+TEST(ConfigTest, ParsesTheWind) {
+  const config::SessionConfig cfg = config::parse_session(kSession, "session.json");
+  EXPECT_DOUBLE_EQ(cfg.wind.mean_speed_mps, 6.0);
+  EXPECT_DOUBLE_EQ(cfg.wind.mean_from_rad, 4.712);
+  EXPECT_DOUBLE_EQ(cfg.wind.turbulence_w20_mps, 7.7);
+  EXPECT_TRUE(cfg.wind.profile.log_law);
+  EXPECT_DOUBLE_EQ(cfg.wind.profile.roughness_m, 0.05);
+  EXPECT_EQ(cfg.wind.seed, 42U);  // the session seed
+  ASSERT_EQ(cfg.gusts.size(), 1U);
+  EXPECT_DOUBLE_EQ(cfg.gusts[0].start_s, 12.0);
+  EXPECT_DOUBLE_EQ(cfg.gusts[0].from_rad, 1.571);
 }
 
 TEST(ConfigTest, MissingFieldNamesItsPath) {

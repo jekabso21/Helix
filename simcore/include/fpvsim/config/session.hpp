@@ -3,9 +3,11 @@
 #include <cstdint>
 #include <filesystem>
 #include <string>
+#include <vector>
 
 #include <fpvsim/bridge/betaflight.hpp>
 #include <fpvsim/env/atmosphere.hpp>
+#include <fpvsim/env/wind.hpp>
 #include <fpvsim/input/mapping.hpp>
 #include <fpvsim/pilot/altitude_hold.hpp>
 #include <fpvsim/sim/vehicle.hpp>
@@ -63,6 +65,8 @@ struct SessionConfig {
   EscConfig esc;
   Origin origin;
   env::AtmosphereParams atmosphere;
+  env::WindParams wind;          // seeded from the session seed
+  std::vector<env::Gust> gusts;  // scheduled in the environment file
   Spawn spawn;
   InputConfig input;
   ControlApiConfig control_api;

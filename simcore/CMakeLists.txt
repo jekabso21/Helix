@@ -2,6 +2,7 @@ configure_file(src/app/version.hpp.in generated/fpvsim/version.hpp @ONLY)
 
 add_library(fpvsim_simcore_models STATIC
     src/env/atmosphere.cpp
+    src/env/wind.cpp
     src/physics/aero.cpp
     src/physics/battery.cpp
     src/physics/contact.cpp
@@ -28,6 +29,7 @@ add_library(fpvsim_simcore STATIC
     src/log/csv_log.cpp
     src/net/udp_socket.cpp
     src/pilot/altitude_hold.cpp
+    src/sim/env_update.cpp
     src/sim/loop.cpp
     src/sim/model_control.cpp
     src/sim/vehicle.cpp)

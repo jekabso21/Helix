@@ -11,6 +11,8 @@
 
 #include <fpvsim/bridge/betaflight.hpp>
 #include <fpvsim/env/atmosphere.hpp>
+#include <fpvsim/env/wind.hpp>
+#include <fpvsim/sim/env_update.hpp>
 #include <fpvsim/input/control.hpp>
 #include <fpvsim/input/joystick.hpp>
 #include <fpvsim/io/io_thread.hpp>
@@ -46,10 +48,15 @@ Snapshot make_snapshot(SimTime t, std::int64_t step_index, const Vehicle& vehicl
                        const StepResult& result, const bf::MotorCommands& commands,
                        const bf::RcChannels& rc, bool paused, double air_density,
                        const LoopCounters& counters, const bf::LinkCounters& link,
-                       const input::DeviceState& device, const input::DeviceInfo& device_info) {
+                       const input::DeviceState& device, const input::DeviceInfo& device_info,
+                       const env::Wind& wind, const Eigen::Vector3d& wind_ned) {
   const VehicleState& state = vehicle.state();
   const auto& b = state.body;
   Snapshot s{};
+  s.wind_ned = {wind_ned.x(), wind_ned.y(), wind_ned.z()};
+  s.wind_mean_speed_mps = wind.params().mean_speed_mps;
+  s.wind_mean_from_rad = wind.params().mean_from_rad;
+  s.wind_turbulence_w20_mps = wind.params().turbulence_w20_mps;
   s.sim_time_ns = t.ns;
   s.step_index = step_index;
   s.position_ned = {b.position_ned.x(), b.position_ned.y(), b.position_ned.z()};
@@ -103,7 +110,8 @@ bool apply_commands(io::CommandQueue& commands_in, io::ResultQueue& results_out,
                     const config::Spawn& spawn_cfg, pilot::AltitudeHoldPilot& autopilot,
                     bf::MotorCommands& commands, MotorCommandArray& motor_commands, bool& paused,
                     input::InputControl& input_control, ModelControl& model_control,
-                    input::JoystickManager* joystick, input::InputMapping& mapping) {
+                    input::JoystickManager* joystick, input::InputMapping& mapping,
+                    env::Wind& wind) {
   bool running = true;
   Command command{};
   VehicleParams reloaded{};
@@ -135,6 +143,10 @@ bool apply_commands(io::CommandQueue& commands_in, io::ResultQueue& results_out,
         }
         break;
       }
+      case CommandType::kSetEnv:
+        // a full gust queue drops the gust; the mean and turbulence still change
+        (void)apply_env_update(wind, command.env, to_seconds(t));
+        break;
       case CommandType::kReloadModel:
         if (model_control.take(reloaded)) {
           reloaded.imu_noise.sample_rate_hz = vehicle.params().imu_noise.sample_rate_hz;
@@ -207,6 +219,11 @@ RunSummary run_realtime(const config::SessionConfig& session, const VehicleParam
   model.imu_noise.sample_rate_hz = static_cast<double>(session.physics_rate_hz);
   model.imu_noise.seed = session.seed;
   Vehicle vehicle(model, spawn);
+  env::Wind wind(session.wind);
+  for (const env::Gust& gust : session.gusts) {
+    (void)wind.add_gust(gust);
+  }
+  Eigen::Vector3d wind_ned = Eigen::Vector3d::Zero();
   bf::BetaflightLink link(session.betaflight);
   pilot::AltitudeHoldPilot autopilot(session.input.altitude_hold);
   const bool use_joystick = session.input.source == "gamepad";
@@ -266,7 +283,7 @@ RunSummary run_realtime(const config::SessionConfig& session, const VehicleParam
 
     running = apply_commands(commands_in, results_out, t, vehicle, spawn, session.spawn, autopilot,
                              commands, motor_commands, paused, input_control, model_control,
-                             joystick.get(), mapping);
+                             joystick.get(), mapping, wind);
 
     link.poll_motors(commands);
     for (std::size_t i = 0; i < bf::kMotorCount; ++i) {
@@ -285,7 +302,10 @@ RunSummary run_realtime(const config::SessionConfig& session, const VehicleParam
         link.send_rc(to_seconds(t), rc);
       }
       const physics::RigidBodyState state_before = before.body;
-      result = vehicle.step(motor_commands, air, to_seconds(t), dt_s);
+      // the turbulence scales use the speed through the air seen on the previous step
+      const double air_speed = (before.body.velocity_ned - wind_ned).norm();
+      wind_ned = wind.step(to_seconds(t), dt_s, height_m, air_speed);
+      result = vehicle.step(motor_commands, air, wind_ned, to_seconds(t), dt_s);
       if (step_index % fdm_every == 0) {
         last_fdm = bf::FdmInput{.sim_time_s = to_seconds(t),
                                 .angular_rate_frd = result.imu.angular_rate_frd,
@@ -316,7 +336,7 @@ RunSummary run_realtime(const config::SessionConfig& session, const VehicleParam
     }
     if (!snapshots.try_push(make_snapshot(t, step_index, vehicle, result, commands, rc, paused,
                                           air.density_kg_m3, counters, link.counters(), device,
-                                          device_info))) {
+                                          device_info, wind, wind_ned))) {
       ++dropped_snapshots;
     }
 
