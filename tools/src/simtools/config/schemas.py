@@ -582,6 +582,87 @@ class EnvUpdateConfig(Strict):
         return self
 
 
+# For each failure: whether it needs a motor, whether it needs a sensor, and its parameters with
+# the defaults a bare request gets (None: the request must give it)
+FAILURE_FIELDS: dict[str, tuple[bool, bool, dict[str, float | None]]] = {
+    "motor_out": (True, False, {}),
+    "motor_degraded": (True, False, {"output_pct": 50.0}),
+    "esc_desync": (True, False, {"period_ms": 500.0, "dropout_ms": 50.0}),
+    "prop_damage": (True, False, {"thrust_loss_pct": 20.0, "vibration_scale": 10.0}),
+    "battery_weak_cell": (False, False, {"drop_v": 0.5}),
+    "battery_high_resistance": (
+        False,
+        False,
+        {"cell_resistance_scale": 3.0, "connector_add_mohm": 0.0},
+    ),
+    "imu_noise": (False, True, {"noise_scale": 5.0}),
+    "imu_bias": (False, True, {}),  # step_dps for the gyro, step_mps2 for the accelerometer
+    "imu_stuck": (False, True, {}),
+    "imu_saturation": (False, True, {"range_pct": 25.0}),
+    "baro_stuck": (False, False, {}),
+    "baro_offset": (False, False, {"offset_hpa": None}),
+}
+
+
+class FailureRequestConfig(Strict):
+    """A failure to inject, in file units; the resolver converts it for the control API."""
+
+    type: Literal[
+        "motor_out",
+        "motor_degraded",
+        "esc_desync",
+        "prop_damage",
+        "battery_weak_cell",
+        "battery_high_resistance",
+        "imu_noise",
+        "imu_bias",
+        "imu_stuck",
+        "imu_saturation",
+        "baro_stuck",
+        "baro_offset",
+    ]
+    motor: int | None = Field(default=None, ge=1, le=8)  # Betaflight motor number
+    sensor: Literal["gyro", "accel"] | None = None
+    axis: Literal["x", "y", "z", "all"] = "all"
+    output_pct: float | None = Field(default=None, ge=0.0, le=100.0)
+    period_ms: float | None = Field(default=None, gt=0.0)
+    dropout_ms: float | None = Field(default=None, gt=0.0)
+    thrust_loss_pct: float | None = Field(default=None, ge=0.0, le=99.0)
+    vibration_scale: float | None = Field(default=None, ge=0.0, le=1000.0)
+    drop_v: float | None = Field(default=None, ge=0.0, le=4.2)
+    cell_resistance_scale: float | None = Field(default=None, gt=0.0, le=1000.0)
+    connector_add_mohm: float | None = Field(default=None, ge=0.0, le=10000.0)
+    noise_scale: float | None = Field(default=None, ge=0.0, le=1000.0)
+    step_dps: float | None = None
+    step_mps2: float | None = None
+    range_pct: float | None = Field(default=None, gt=0.0, le=100.0)
+    offset_hpa: float | None = None
+    start_s: float | None = Field(default=None, ge=0.0)
+    duration_s: float | None = Field(default=None, gt=0.0)
+
+    @model_validator(mode="after")
+    def fields_fit_the_type(self) -> "FailureRequestConfig":
+        needs_motor, needs_sensor, params = FAILURE_FIELDS[self.type]
+        if needs_motor and self.motor is None:
+            raise ValueError(f"{self.type} needs a motor")
+        if needs_sensor and self.sensor is None:
+            raise ValueError(f"{self.type} needs a sensor: gyro or accel")
+        for name, default in params.items():
+            if getattr(self, name) is None:
+                if default is None:
+                    raise ValueError(f"{self.type} needs {name}")
+                setattr(self, name, default)
+        if self.type == "esc_desync" and (self.dropout_ms or 0.0) >= (self.period_ms or 0.0):
+            raise ValueError("dropout_ms must be shorter than period_ms")
+        if self.type == "imu_bias":
+            step = self.step_dps if self.sensor == "gyro" else self.step_mps2
+            wrong = self.step_mps2 if self.sensor == "gyro" else self.step_dps
+            if step is None or wrong is not None:
+                unit = "step_dps" if self.sensor == "gyro" else "step_mps2"
+                raise ValueError(f"imu_bias on the {self.sensor} needs {unit} and only that")
+        return self
+
+
 class EnvironmentConfig(Strict):
     schema_version: Literal[1]
     atmosphere: AtmosphereConfig = Field(default_factory=AtmosphereConfig)

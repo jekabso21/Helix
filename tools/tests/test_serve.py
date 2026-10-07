@@ -351,3 +351,13 @@ def test_set_env_needs_a_running_session(server: Server) -> None:
     bad = client.request("set_env", {"wind": {"mean": {"speed_mps": -5}}})
     assert bad["error"]["code"] == "invalid_params"
     client.close()
+
+
+def test_failures_need_a_running_session(server: Server) -> None:
+    client = LineClient(server.server_address[1])
+    reply = client.request("inject_failure", {"type": "motor_out", "motor": 1})
+    assert reply["error"]["code"] == "invalid_state"
+    assert client.request("inject_failure", {"type": "nope"})["error"]["code"] == "invalid_params"
+    assert client.request("list_failures")["error"]["code"] == "invalid_state"
+    assert client.request("clear_failure", {"all": True})["error"]["code"] == "invalid_state"
+    client.close()

@@ -360,3 +360,111 @@ def test_a_steady_wind_carries_the_hovering_drone_downwind(tmp_path: Path) -> No
     assert max(east) <= 8.0 * 1.25, max(east)  # the overshoot stays bounded
     assert max(abs(v) for v in north) < 0.5, max(abs(v) for v in north)
     assert max(abs(h - TARGET_HEIGHT_M) for h in heights) <= 1.0, (min(heights), max(heights))
+
+
+class FailureInjector(threading.Thread):
+    """Damages a prop, then cuts a motor, then clears everything, through the control API."""
+
+    def __init__(self) -> None:
+        super().__init__(daemon=True)
+        self.error: str | None = None
+        self.prop_id = -1
+        self.motor_id = -1
+        self.listed: list[dict] = []
+        self.telemetry_failures: list[dict] = []
+
+    def run(self) -> None:
+        try:
+            client = None
+            deadline = time.monotonic() + 30.0
+            while client is None and time.monotonic() < deadline:
+                try:
+                    client = ControlClient(timeout_s=3.0)
+                except OSError:
+                    time.sleep(0.2)
+            assert client is not None, "control API never came up"
+            with client:
+
+                def wait_until(sim_s: float) -> None:
+                    while client.request("get_state")["sim_time_ns"] < sim_s * 1e9:
+                        time.sleep(0.05)
+
+                wait_until(20.0)
+                self.prop_id = client.request(
+                    "inject_failure",
+                    {
+                        "type": "prop_damage",
+                        "target": {"motor": 1},
+                        "params": {"thrust_loss": 0.3, "vibration_scale": 10.0},
+                        "duration_s": 4.0,
+                    },
+                )["failure_id"]
+                time.sleep(0.5)
+                self.listed = client.request("list_failures")["failures"]
+                wait_until(26.0)
+                self.motor_id = client.request(
+                    "inject_failure", {"type": "motor_out", "target": {"motor": 2}}
+                )["failure_id"]
+                sub = client.request("subscribe", {"topic": "telemetry", "rate_hz": 5})
+                events = list(client.events(0.6))
+                client.request("unsubscribe", {"subscription_id": sub["subscription_id"]})
+                self.telemetry_failures = events[-1]["data"]["sim"]["active_failures"]
+                wait_until(30.0)
+                client.request("clear_failure", {"all": True})
+        except Exception as error:
+            self.error = f"{type(error).__name__}: {error}"
+
+
+@pytest.mark.skipif(not SITL_BINARY.exists(), reason="Betaflight SITL not built")
+@pytest.mark.skipif(
+    not any(
+        (REPO_ROOT / "build" / p / "simcore/simcore").exists()
+        for p in ("release", "ci", "clang", "dev")
+    ),
+    reason="simcore not built",
+)
+def test_failures_injected_live_change_the_flight_and_are_logged(tmp_path: Path) -> None:
+    if sitl_port_busy():
+        pytest.skip("a Betaflight SITL is already running on TCP 5761")
+    resolved = resolve_session(REPO_ROOT / "configs/sessions/ci_hover.yaml", REPO_ROOT)
+    run_dir = write_run_directory(resolved, tmp_path, REPO_ROOT, ["pytest"])
+    injector = FailureInjector()
+    injector.start()
+    result = run_headless(resolved, run_dir, find_simcore(REPO_ROOT))
+    injector.join(timeout=10.0)
+    assert result.exit_code == 0, (run_dir / "logs/simcore.log").read_text()
+    assert injector.error is None, injector.error
+    assert injector.prop_id > 0 and injector.motor_id > injector.prop_id
+    assert [f["type"] for f in injector.listed] == ["prop_damage"]
+    assert injector.listed[0]["in_effect"] is True
+    assert injector.listed[0]["end_s"] == pytest.approx(injector.listed[0]["start_s"] + 4.0)
+    assert {f["type"] for f in injector.telemetry_failures} == {"motor_out"}  # the prop expired
+
+    with (run_dir / "data/events.csv").open() as f:
+        events = list(csv.DictReader(f))
+    by_id = {(int(e["failure_id"]), e["event"]): float(e["t_s"]) for e in events}
+    prop_start = by_id[(injector.prop_id, "start")]
+    assert 20.0 <= prop_start < 21.0
+    assert by_id[(injector.prop_id, "end")] == pytest.approx(prop_start + 4.0, abs=0.01)
+    motor_start = by_id[(injector.motor_id, "start")]
+    assert 26.0 <= motor_start < 27.0
+    assert 30.0 <= by_id[(injector.motor_id, "end")] < 31.0
+
+    with (run_dir / "data/truth.csv").open() as f:
+        rows = list(csv.DictReader(f))
+
+    def window(start_s: float, end_s: float) -> list[dict]:
+        return [r for r in rows if start_s <= float(r["t_s"]) < end_s]
+
+    def mean(rows_: list[dict], key: str) -> float:
+        return sum(float(r[key]) for r in rows_) / len(rows_)
+
+    # with 30 % less thrust on motor 1 Betaflight drives it harder than its neighbours
+    before, damaged = window(17.0, prop_start), window(prop_start + 1.0, prop_start + 4.0)
+    assert (
+        mean(damaged, "m1") - mean(damaged, "m4") > mean(before, "m1") - mean(before, "m4") + 0.03
+    )
+    assert all(abs(-float(r["down_m"]) - TARGET_HEIGHT_M) < 1.5 for r in damaged)
+    # on three motors the drone cannot hold its height
+    cut = window(motor_start, motor_start + 3.0)
+    assert -float(cut[-1]["down_m"]) < TARGET_HEIGHT_M - 1.0 or cut[-1]["crashed"] == "1"

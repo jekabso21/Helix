@@ -17,6 +17,7 @@ from simtools.config.schemas import (
     DroneConfig,
     EnvironmentConfig,
     EnvUpdateConfig,
+    FailureRequestConfig,
     InputMappingConfig,
     SessionConfig,
     WindConfig,
@@ -160,6 +161,56 @@ def env_update_message(update: EnvUpdateConfig) -> dict[str, Any]:
             "amplitude_mps": update.gust.amplitude_mps,
             "from_rad": units.deg_to_rad(update.gust.from_deg),
         }
+    return message
+
+
+def failure_message(request: FailureRequestConfig) -> dict[str, Any]:
+    """The control API's inject_failure params (SI) for a request given in file units."""
+    r = request
+    params: dict[str, float] = {}
+    if r.type == "motor_degraded":
+        params = {"output_gain": (r.output_pct or 0.0) / 100.0}
+    elif r.type == "esc_desync":
+        params = {
+            "period_s": (r.period_ms or 0.0) / 1000.0,
+            "dropout_s": (r.dropout_ms or 0.0) / 1000.0,
+        }
+    elif r.type == "prop_damage":
+        params = {
+            "thrust_loss": (r.thrust_loss_pct or 0.0) / 100.0,
+            "vibration_scale": r.vibration_scale or 0.0,
+        }
+    elif r.type == "battery_weak_cell":
+        params = {"drop_v": r.drop_v or 0.0}
+    elif r.type == "battery_high_resistance":
+        params = {
+            "cell_resistance_scale": r.cell_resistance_scale or 1.0,
+            "connector_add_ohm": (r.connector_add_mohm or 0.0) / 1000.0,
+        }
+    elif r.type == "imu_noise":
+        params = {"noise_scale": r.noise_scale or 0.0}
+    elif r.type == "imu_bias":
+        params = {
+            "step": units.deg_to_rad(r.step_dps or 0.0)
+            if r.sensor == "gyro"
+            else (r.step_mps2 or 0.0)
+        }
+    elif r.type == "imu_saturation":
+        params = {"range_scale": (r.range_pct or 0.0) / 100.0}
+    elif r.type == "baro_offset":
+        params = {"offset_pa": units.hpa_to_pa(r.offset_hpa or 0.0)}
+    target: dict[str, Any] = {}
+    if r.motor is not None:
+        target["motor"] = r.motor
+    if r.type.startswith("imu_"):
+        target["sensor"] = r.sensor
+        if r.type in ("imu_bias", "imu_stuck"):
+            target["axis"] = r.axis
+    message: dict[str, Any] = {"type": r.type, "target": target, "params": params}
+    if r.start_s is not None:
+        message["start_s"] = r.start_s
+    if r.duration_s is not None:
+        message["duration_s"] = r.duration_s
     return message
 
 

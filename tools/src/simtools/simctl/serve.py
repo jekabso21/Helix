@@ -16,11 +16,12 @@ from simtools.config.resolver import (
     ConfigError,
     ResolvedSession,
     env_update_message,
+    failure_message,
     load_yaml,
     resolve_session,
     write_run_directory,
 )
-from simtools.config.schemas import EnvUpdateConfig, InputMappingConfig
+from simtools.config.schemas import EnvUpdateConfig, FailureRequestConfig, InputMappingConfig
 from simtools.input_devices import joystick_names
 from simtools.modelc import compile_drone, export_glb, to_json
 from simtools.modelc.overrides import OverrideError, apply_overrides, summary
@@ -388,6 +389,34 @@ class Supervisor:
         with self._lock:
             return {"cameras": [self._video_status[name] for name in sorted(self._video_status)]}
 
+    def _control(self, method: str, params: Json) -> Any:
+        """Forwards one request to the running session's control API."""
+        with self._lock:
+            resolved = self._resolved
+            running = self._state == "running"
+        if resolved is None or not running:
+            raise LaunchError("no session is running")
+        api = resolved.session["control_api"]
+        try:
+            with ControlClient(api["host"], api["port"]) as client:
+                return client.request(method, params)
+        except (OSError, ApiError) as error:
+            raise LaunchError(f"{method} failed: {error}") from error
+
+    def inject_failure(self, params: Json) -> Json:
+        """Injects a failure given in file units; the result carries its failure_id."""
+        try:
+            request = FailureRequestConfig.model_validate(params)
+        except ValidationError as error:
+            raise ConfigError(f"invalid failure: {error}") from error
+        return dict(self._control("inject_failure", failure_message(request)))
+
+    def clear_failure(self, params: Json) -> Json:
+        return dict(self._control("clear_failure", params))
+
+    def list_failures(self) -> Json:
+        return dict(self._control("list_failures", {}))
+
     def set_env(self, params: Json) -> Json:
         """Changes the running session's wind; params use the environment file's units."""
         try:
@@ -609,6 +638,12 @@ class Handler(socketserver.StreamRequestHandler):
                     str(params.get("process", "simcore")), int(params.get("lines", 50))
                 )
                 return self._ok(request_id, {"lines": lines}), None
+            if method == "inject_failure":
+                return self._ok(request_id, supervisor.inject_failure(dict(params))), None
+            if method == "clear_failure":
+                return self._ok(request_id, supervisor.clear_failure(dict(params))), None
+            if method == "list_failures":
+                return self._ok(request_id, supervisor.list_failures()), None
             if method == "set_env":
                 return self._ok(request_id, supervisor.set_env(dict(params))), None
             if method == "list_input_devices":

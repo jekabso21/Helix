@@ -299,3 +299,58 @@ def test_a_live_wind_change_is_converted_to_si() -> None:
     assert "wind" not in only_gust
     with pytest.raises(ValidationError, match="nothing"):
         EnvUpdateConfig.model_validate({})
+
+
+def test_failure_requests_are_converted_to_si() -> None:
+    from simtools.config.resolver import failure_message
+    from simtools.config.schemas import FailureRequestConfig
+
+    def convert(document: dict) -> dict:
+        return failure_message(FailureRequestConfig.model_validate(document))
+
+    assert convert({"type": "motor_out", "motor": 2}) == {
+        "type": "motor_out",
+        "target": {"motor": 2},
+        "params": {},
+    }
+    degraded = convert({"type": "motor_degraded", "motor": 1, "output_pct": 60, "duration_s": 3})
+    assert degraded["params"] == {"output_gain": pytest.approx(0.6)}
+    assert degraded["duration_s"] == 3.0
+    assert convert({"type": "esc_desync", "motor": 3, "period_ms": 400, "dropout_ms": 50})[
+        "params"
+    ] == {"period_s": pytest.approx(0.4), "dropout_s": pytest.approx(0.05)}
+    assert convert(
+        {"type": "prop_damage", "motor": 4, "thrust_loss_pct": 25, "vibration_scale": 10}
+    )["params"] == {"thrust_loss": pytest.approx(0.25), "vibration_scale": 10.0}
+    assert convert(
+        {"type": "battery_high_resistance", "cell_resistance_scale": 3, "connector_add_mohm": 20}
+    )["params"] == {"cell_resistance_scale": 3.0, "connector_add_ohm": pytest.approx(0.02)}
+    gyro = convert({"type": "imu_bias", "sensor": "gyro", "axis": "x", "step_dps": 30})
+    assert gyro["target"] == {"sensor": "gyro", "axis": "x"}
+    assert gyro["params"] == {"step": pytest.approx(math.radians(30.0))}
+    accel = convert({"type": "imu_bias", "sensor": "accel", "axis": "all", "step_mps2": 2})
+    assert accel["params"] == {"step": 2.0}
+    assert convert({"type": "imu_saturation", "sensor": "gyro", "range_pct": 25})["params"] == {
+        "range_scale": pytest.approx(0.25)
+    }
+    assert convert({"type": "baro_offset", "offset_hpa": -3})["params"] == {
+        "offset_pa": pytest.approx(-300.0)
+    }
+
+
+def test_failure_requests_are_checked() -> None:
+    from simtools.config.schemas import FailureRequestConfig
+
+    for bad in (
+        {"type": "gremlins"},
+        {"type": "motor_out"},
+        {"type": "motor_out", "motor": 0},
+        {"type": "motor_degraded", "motor": 1, "output_pct": 150},
+        {"type": "esc_desync", "motor": 1, "period_ms": 100, "dropout_ms": 200},
+        {"type": "imu_bias", "sensor": "gyro", "step_mps2": 1},
+        {"type": "imu_bias", "sensor": "accel", "step_dps": 1},
+        {"type": "imu_noise", "sensor": "compass", "noise_scale": 2},
+        {"type": "baro_stuck", "duration_s": 0},
+    ):
+        with pytest.raises(ValidationError):
+            FailureRequestConfig.model_validate(bad)
