@@ -16,7 +16,7 @@ shadow_enabled = true
 [node name="Drone" type="Node3D" parent="."]
 script = ExtResource("2")
 
-[node name="CameraRig" type="Node3D" parent="." node_paths=PackedStringArray("drone_path")]
+[node name="CameraRig" type="Node3D" parent="."]
 script = ExtResource("3")
 drone_path = NodePath("../Drone")
 
